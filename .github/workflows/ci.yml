@@ -20,10 +20,10 @@ jobs:
     env:
       DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
       - run: pnpm typecheck
