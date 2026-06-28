@@ -6,7 +6,7 @@
 
 Your coding agent has never been in the room. Marrow puts it there.
 
-[Docs](./docs) · [marrowhq.com](https://marrowhq.com)
+[Docs](./docs) · [Launch site](https://marrow-six.vercel.app)
 
 </div>
 

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://marrowhq.com/sitemap.xml
+Sitemap: https://marrow-six.vercel.app/sitemap.xml

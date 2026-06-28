@@ -32,4 +32,4 @@ The public repo is self-hosted software, not a hosted compliance boundary. Treat
 
 ## Reporting
 
-Security issues can be reported to security@marrowhq.com. We aim to acknowledge quickly and prioritize critical fixes.
+Please use GitHub private vulnerability reporting on the public repository. We aim to acknowledge quickly and prioritize critical fixes.
