@@ -49,6 +49,8 @@ root). The README "connect to Claude Code or Codex" section has the full
 
 The agent starts with `prepare_task` for a compact task brief, can call `maintain_truth` for the maintenance brief, and still has `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source`, plus the shaped writes. Every result carries status and provenance, and no tool can set a node decided.
 
+For the operating loop to paste into a repo's agent instructions, see [Agent workflow](./agent-workflow.md).
+
 ## Browse the brain
 
 ```bash
