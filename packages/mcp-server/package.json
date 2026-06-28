@@ -1,0 +1,50 @@
+{
+  "name": "@marrowhq/mcp-server",
+  "description": "MCP server for Marrow, the product context layer for coding agents. Serves task-scoped product truth over MCP (search, get_decisions, get_open_questions, get_entity, trace_to_source, check_drift), with status and provenance on every fact.",
+  "version": "0.4.0",
+  "private": false,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "marrow-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@marrowhq/core": "workspace:*",
+    "@marrowhq/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ElxMaj/marrow.git",
+    "directory": "packages/mcp-server"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  }
+}

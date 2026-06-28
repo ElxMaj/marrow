@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+coverage/
+.pgdata/
+.DS_Store
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.design-review/
+.vercel
+.shots/
+.playwright-mcp/
+.neon

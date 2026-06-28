@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- the share card source: screenshot this page at exactly 1200x630 to
+     regenerate /og.png (the check is visual, keep it in sync with index). -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 64px 72px 56px;
+        background: var(--paper);
+      }
+      .og-brand {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 26px;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .og-dot {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        flex: 0 0 26px;
+        border-radius: 999px;
+        background: linear-gradient(
+          145deg,
+          var(--gold-300) 0%,
+          var(--gold-500) 52%,
+          var(--gold-600) 100%
+        );
+        box-shadow:
+          inset 0 1px 0 rgba(255, 246, 220, 0.42),
+          inset 0 -1px 0 rgba(48, 31, 7, 0.34),
+          0 0 0 1px var(--gold-border);
+      }
+      .og-dot::before,
+      .og-dot::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+      }
+      .og-dot::before {
+        inset: 7px;
+        background: var(--paper);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 246, 220, 0.18),
+          0 0 0 1px rgba(48, 31, 7, 0.14);
+      }
+      .og-dot::after {
+        inset: 0;
+        margin: auto;
+        width: 8px;
+        height: 8px;
+        background: radial-gradient(
+          circle at center,
+          var(--gold-300) 0 38%,
+          var(--gold-500) 39% 100%
+        );
+        box-shadow: 0 0 0 1px rgba(48, 31, 7, 0.14);
+      }
+      .og-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-variation-settings: "opsz" 144;
+        font-size: 64px;
+        line-height: 1.06;
+        letter-spacing: -0.025em;
+        color: var(--ink);
+        max-width: 19ch;
+      }
+      .og-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 48px;
+      }
+      .og-lines {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        line-height: 1.8;
+        color: var(--ink-muted);
+      }
+      .og-lines .ln {
+        color: var(--ink-faint);
+        font-size: 15px;
+        margin-right: 14px;
+      }
+      .og-lines .hl {
+        background: var(--gold-wash-strong);
+        color: var(--ink);
+        border-radius: 3px;
+        padding: 2px 5px;
+      }
+      .og-fact {
+        flex: none;
+        width: 330px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 22px 24px;
+        position: relative;
+      }
+      .og-fact .pill {
+        font-size: 13px;
+      }
+      .og-fact-title {
+        margin: 12px 0 10px;
+        font-family: var(--font-display);
+        font-weight: 620;
+        font-variation-settings: "opsz" 40;
+        font-size: 24px;
+        line-height: 1.25;
+        color: var(--ink);
+      }
+      .og-meta {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        color: var(--ink-faint);
+      }
+      .og-meta .id {
+        color: var(--accent);
+      }
+      .og-stamp {
+        position: absolute;
+        top: -12px;
+        right: 16px;
+        padding: 4px 12px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--decided);
+        background: var(--decided-bg);
+        border: 1.5px solid var(--decided-border);
+        border-radius: 4px;
+        transform: rotate(-2.5deg);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="og-brand"><span class="og-dot"></span>Marrow</div>
+    <h1 class="og-title">Your coding agent has never been in the room.</h1>
+    <div class="og-row">
+      <div class="og-lines">
+        <div>
+          <span class="ln">0007</span>A hard delete on the wrong project is a support fire. Give us
+          a window to undo it.
+        </div>
+        <div>
+          <span class="ln">0008</span>Then that's it.
+          <span class="hl">Soft delete, 30 days, then purge</span>.
+        </div>
+        <div><span class="ln">0013</span>Noted. Park it as open.</div>
+      </div>
+      <div class="og-fact">
+        <span class="og-stamp">Decided</span>
+        <p class="og-meta" style="margin-bottom: 6px">Decision</p>
+        <p class="og-fact-title" style="margin-top: 0">
+          Deletes are soft for 30 days, then purged.
+        </p>
+        <p class="og-meta"><span class="id">ev_3f9a</span> · [528–560] · 1.00 · Human</p>
+      </div>
+    </div>
+  </body>
+</html>

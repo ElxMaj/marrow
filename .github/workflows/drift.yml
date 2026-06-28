@@ -1,0 +1,37 @@
+name: Marrow drift check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marrow
+          POSTGRES_PASSWORD: marrow
+          POSTGRES_DB: marrow
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow
+      - run: pnpm marrow drift --ci --since origin/main
+        env:
+          DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow

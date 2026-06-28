@@ -1,0 +1,23 @@
+{
+  "name": "marrow",
+  "version": "0.4.0",
+  "description": "Marrow MCP server: product context layer for coding agents. Ingest the room, query decided facts, surface drift, and keep agents scoped to task-relevant product truth.",
+  "license": "Apache-2.0",
+  "homepage": "https://marrowhq.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ElxMaj/marrow.git",
+    "directory": "packages/mcp-server"
+  },
+  "tools": [
+    "ingest",
+    "search",
+    "get_decisions",
+    "get_open_questions",
+    "get_entity",
+    "trace_to_source",
+    "check_drift",
+    "dismiss_catch",
+    "accept_catch"
+  ]
+}

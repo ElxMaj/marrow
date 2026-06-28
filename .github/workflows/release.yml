@@ -1,0 +1,23 @@
+name: release
+# publishes ONLY on a tagged release (v*), never on a normal merge. publishing
+# is a no-op until the public packages flip `private: false` (after the marrow
+# org and npm name are secured) and NPM_TOKEN is set. see docs/release.md.
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - run: pnpm changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

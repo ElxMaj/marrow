@@ -1,0 +1,345 @@
+import { execFileSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  type EmbeddingProvider,
+  type EmbeddingResult,
+  Marrow,
+  type ModelProvider,
+  Store,
+} from "@marrowhq/core";
+import pg from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { type ToolDef, createTools } from "./tools.js";
+
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://marrow:marrow@localhost:5432/marrow";
+const here = dirname(fileURLToPath(import.meta.url));
+const coreMigrate = join(here, "..", "..", "core", "scripts", "migrate.mjs");
+
+const transcript =
+  "Staff: we share one login at the desk, the password ends up on a post-it. We decided magic links, no shared passwords.";
+
+class FakeModel implements ModelProvider {
+  readonly model = "fake-model";
+  constructor(private readonly text: string) {}
+  complete(): Promise<string> {
+    const at = (phrase: string) => {
+      const start = this.text.indexOf(phrase);
+      return { start, end: start + phrase.length };
+    };
+    return Promise.resolve(
+      JSON.stringify({
+        entities: [{ name: "magic link auth", ...at("magic links") }],
+        decisions: [
+          {
+            title: "magic links, no shared passwords",
+            rationale: "shared desk terminal",
+            ...at("magic links, no shared passwords"),
+          },
+        ],
+      }),
+    );
+  }
+}
+
+class FakeEmbedding implements EmbeddingProvider {
+  readonly model = "fake-emb";
+  embed(texts: string[]): Promise<EmbeddingResult> {
+    return Promise.resolve({ vectors: texts.map(() => [0, 0, 0, 0]), model: this.model, dim: 4 });
+  }
+}
+
+let store: Store;
+let core: Marrow;
+let tools: ToolDef[];
+let admin: pg.Pool;
+
+const call = async (name: string, args: Record<string, unknown> = {}): Promise<unknown> => {
+  const tool = tools.find((t) => t.name === name);
+  if (!tool) throw new Error(`no such tool: ${name}`);
+  return tool.handler(args);
+};
+
+beforeAll(() => {
+  execFileSync("node", [coreMigrate], { env: { ...process.env, DATABASE_URL }, stdio: "ignore" });
+  store = new Store(DATABASE_URL);
+  core = new Marrow(store, new FakeModel(transcript), new FakeEmbedding());
+  tools = createTools(core);
+  admin = new pg.Pool({ connectionString: DATABASE_URL });
+});
+
+afterAll(async () => {
+  await store.close();
+  await admin.end();
+});
+
+beforeEach(async () => {
+  await admin.query(
+    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+  );
+});
+
+describe("mcp tools", () => {
+  it("registers exactly the read + shaped-write tools, and none that set decided", () => {
+    const names = tools.map((t) => t.name);
+    expect(names).toEqual([
+      "search",
+      "get_decisions",
+      "get_goals",
+      "get_open_questions",
+      "get_entity",
+      "trace_to_source",
+      "append_evidence",
+      "propose_node",
+      "check_drift",
+      "accept_catch",
+      "dismiss_catch",
+    ]);
+    expect(names.find((n) => /decide|promote|approve|author/i.test(n))).toBeUndefined();
+  });
+
+  it("read results always include status and provenance", async () => {
+    await core.ingestAndDistill({ text: transcript, source: "interviews/pfc-gdynia.md" });
+    const res = (await call("get_decisions", {})) as {
+      decisions: { status: string; provenance: { evidenceId: string }[] }[];
+    };
+    expect(res.decisions.length).toBeGreaterThan(0);
+    for (const decision of res.decisions) {
+      expect(decision.status).toBeDefined();
+      expect(decision.provenance[0]?.evidenceId).toBeDefined();
+    }
+  });
+
+  it("get_open_questions returns only open questions with provenance", async () => {
+    const evidence = await store.insertEvidence({
+      text: "billing retry policy is still unresolved",
+      source: "standups/questions.md",
+    });
+    const provenance = [{ evidenceId: evidence.id, start: 0, end: 7 }];
+    const open = await store.insertQuestion({
+      prompt: "Which billing retry policy holds?",
+      status: "open",
+      confidence: { value: 0.5, source: "model" },
+      provenance,
+    });
+    const closed = await store.insertQuestion({
+      prompt: "Already dismissed question",
+      status: "dismissed",
+      confidence: { value: 0.5, source: "model" },
+      provenance,
+    });
+
+    const res = (await call("get_open_questions", {})) as {
+      questions: { id: string; status: string; provenance: { evidenceId: string }[] }[];
+    };
+    expect(res.questions.map((q) => q.id)).toContain(open.id);
+    expect(res.questions.map((q) => q.id)).not.toContain(closed.id);
+    for (const question of res.questions) {
+      expect(question.status).toBe("open");
+      expect(question.provenance[0]?.evidenceId).toBeDefined();
+    }
+  });
+
+  it("get_entity returns an entity by id or name with provenance, null when absent, and validates input", async () => {
+    const { evidenceId } = (await call("append_evidence", {
+      text: "billing portal is the account surface",
+      source: "standups/entity.md",
+    })) as { evidenceId: string };
+    const { node } = (await call("propose_node", {
+      kind: "entity",
+      name: "billing portal",
+      description: "account surface",
+      provenance: [{ evidenceId, start: 0, end: "billing portal".length }],
+    })) as {
+      node: {
+        id: string;
+        kind: string;
+        status: string;
+        provenance: { evidenceId: string }[];
+      };
+    };
+
+    const byName = (await call("get_entity", { idOrName: "billing portal" })) as {
+      entity: { id: string; status: string; provenance: { evidenceId: string }[] } | null;
+    };
+    expect(byName.entity?.id).toBe(node.id);
+    expect(byName.entity?.status).toBe("open");
+    expect(byName.entity?.provenance[0]?.evidenceId).toBe(evidenceId);
+
+    const byId = (await call("get_entity", { idOrName: node.id })) as {
+      entity: { id: string } | null;
+    };
+    expect(byId.entity?.id).toBe(node.id);
+
+    const missing = (await call("get_entity", { idOrName: "missing entity" })) as {
+      entity: unknown | null;
+    };
+    expect(missing.entity).toBeNull();
+    await expect(call("get_entity", {})).rejects.toThrow();
+  });
+
+  it("trace_to_source returns the exact span text and the source label", async () => {
+    await core.ingestAndDistill({ text: transcript, source: "interviews/pfc-gdynia.md" });
+    const { decisions } = (await call("get_decisions", {})) as { decisions: { id: string }[] };
+    const id = decisions[0]?.id;
+    expect(id).toBeDefined();
+    const trace = (await call("trace_to_source", { nodeId: id })) as {
+      source?: string;
+      spanText?: string;
+    };
+    expect(trace.source).toMatch(/pfc-gdynia/);
+    expect((trace.spanText ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("search is bounded and every result carries status and provenance", async () => {
+    await core.ingestAndDistill({ text: transcript, source: "interviews/pfc-gdynia.md" });
+    const { results } = (await call("search", { query: "magic", k: 5 })) as {
+      results: { status: string; provenance: unknown[] }[];
+    };
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.length).toBeLessThanOrEqual(5);
+    for (const node of results) {
+      expect(node.status).toBeDefined();
+      expect(Array.isArray(node.provenance)).toBe(true);
+    }
+  });
+
+  it("append_evidence stores raw, and propose_node creates an OPEN node only", async () => {
+    const { evidenceId } = (await call("append_evidence", {
+      text: "billing webhooks need retries",
+      source: "standups/e.md",
+    })) as { evidenceId: string };
+    expect(evidenceId).toMatch(/^ev_/);
+
+    const { node } = (await call("propose_node", {
+      kind: "decision",
+      title: "webhooks retry with backoff",
+      rationale: "flaky provider",
+      provenance: [{ evidenceId, start: 0, end: 7 }],
+    })) as { node: { status: string; confidence: { source: string } } };
+    expect(node.status).toBe("open");
+    expect(node.confidence.source).toBe("model");
+  });
+
+  it("propose_node advertises and accepts an entity description", async () => {
+    const tool = tools.find((t) => t.name === "propose_node");
+    const properties = (tool?.inputSchema as { properties?: Record<string, unknown> }).properties;
+    expect(properties?.["description"]).toEqual({ type: "string" });
+
+    const { evidenceId } = (await call("append_evidence", {
+      text: "the billing portal is a user-facing account surface",
+      source: "standups/billing.md",
+    })) as { evidenceId: string };
+
+    const { node } = (await call("propose_node", {
+      kind: "entity",
+      name: "billing portal",
+      description: "user-facing account surface",
+      provenance: [{ evidenceId, start: 4, end: 18 }],
+    })) as { node: { kind: string; status: string; description?: string } };
+    expect(node.kind).toBe("entity");
+    expect(node.status).toBe("open");
+    expect(node.description).toBe("user-facing account surface");
+  });
+
+  it("propose_node with kind=goal creates an OPEN, model goal carrying its type", async () => {
+    const { evidenceId } = (await call("append_evidence", {
+      text: "users must reset their own password without support",
+      source: "interviews/support.md",
+    })) as { evidenceId: string };
+
+    const { node } = (await call("propose_node", {
+      kind: "goal",
+      title: "self-serve password reset",
+      description: "no support ticket needed",
+      goalType: "user",
+      provenance: [{ evidenceId, start: 0, end: 5 }],
+    })) as {
+      node: {
+        kind: string;
+        status: string;
+        goalType: string;
+        confidence: { source: string };
+        provenance: { evidenceId: string }[];
+      };
+    };
+    expect(node.kind).toBe("goal");
+    expect(node.status).toBe("open");
+    expect(node.goalType).toBe("user");
+    expect(node.confidence.source).toBe("model");
+    expect(node.provenance[0]?.evidenceId).toBe(evidenceId);
+  });
+
+  it("propose_node with kind=goal rejects a goal without provenance", async () => {
+    await expect(
+      call("propose_node", { kind: "goal", title: "no source goal", goalType: "product" }),
+    ).rejects.toThrow();
+  });
+
+  it("get_goals returns goals with status + provenance and honors the filter", async () => {
+    const { evidenceId } = (await call("append_evidence", {
+      text: "the product must export every brain to portable JSON; users must search across brains",
+      source: "standups/roadmap.md",
+    })) as { evidenceId: string };
+    await call("propose_node", {
+      kind: "goal",
+      title: "portable brain export",
+      goalType: "product",
+      provenance: [{ evidenceId, start: 0, end: 7 }],
+    });
+    await call("propose_node", {
+      kind: "goal",
+      title: "cross-brain search",
+      goalType: "user",
+      provenance: [{ evidenceId, start: 8, end: 15 }],
+    });
+
+    const all = (await call("get_goals", {})) as {
+      goals: {
+        status: string;
+        goalType: string;
+        confidence: { value: number; source: string };
+        provenance: { evidenceId: string }[];
+      }[];
+    };
+    expect(all.goals.length).toBe(2);
+    for (const goal of all.goals) {
+      expect(goal.status).toBeDefined();
+      expect(goal.confidence.source).toBeDefined();
+      expect(goal.provenance[0]?.evidenceId).toBeDefined();
+    }
+
+    const product = (await call("get_goals", { goalType: "product" })) as {
+      goals: { goalType: string }[];
+    };
+    expect(product.goals.length).toBe(1);
+    expect(product.goals[0]?.goalType).toBe("product");
+
+    const open = (await call("get_goals", { status: "open" })) as { goals: { status: string }[] };
+    expect(open.goals.length).toBe(2);
+    expect(open.goals.every((g) => g.status === "open")).toBe(true);
+  });
+
+  it("search surfaces a goal alongside the other node kinds", async () => {
+    const { evidenceId } = (await call("append_evidence", {
+      text: "the product must onboard a new brain in under five minutes",
+      source: "standups/onboarding.md",
+    })) as { evidenceId: string };
+    await call("propose_node", {
+      kind: "goal",
+      title: "five minute onboarding",
+      goalType: "product",
+      provenance: [{ evidenceId, start: 0, end: 7 }],
+    });
+
+    const { results } = (await call("search", { query: "onboarding", k: 5 })) as {
+      results: { kind: string; status: string; provenance: unknown[] }[];
+    };
+    const goal = results.find((n) => n.kind === "goal");
+    expect(goal).toBeDefined();
+    expect(goal?.status).toBe("open");
+    expect(Array.isArray(goal?.provenance)).toBe(true);
+  });
+});

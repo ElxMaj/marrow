@@ -1,0 +1,50 @@
+{
+  "name": "@marrowhq/cli",
+  "description": "Marrow CLI, the product context layer for coding agents. Ingest meeting transcripts in many formats, distill them into decided vs open product truth with provenance, work the question loop, and serve your coding agent over MCP.",
+  "version": "0.4.0",
+  "private": false,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "marrow": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "benchmark"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ElxMaj/marrow.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@marrowhq/core": "workspace:*",
+    "@marrowhq/shared": "workspace:*",
+    "@marrowhq/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.0"
+  }
+}

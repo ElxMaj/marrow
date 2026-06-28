@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#100f0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4efe4" media="(prefers-color-scheme: light)" />
+    <meta
+      name="description"
+      content="Marrow distills the product room into decided-versus-open truth with provenance, served task-scoped to coding agents."
+    />
+    <title>Marrow · the room, distilled</title>
+    <script>
+      // resolve the theme before first paint so there is no flash. mirrors
+      // resolveInitialTheme in ui.ts: an explicit prior choice wins, else the OS.
+      (function () {
+        try {
+          var stored = localStorage.getItem("marrow-theme");
+          var prefersDark =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme =
+            stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
+          document.documentElement.dataset.theme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", theme === "light" ? "#f4efe4" : "#100f0d");
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

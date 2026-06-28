@@ -1,0 +1,32 @@
+{
+  "tokenizer": "chars/4 heuristic",
+  "baseline": {
+    "docs": 3,
+    "tokens": 473
+  },
+  "marrow": {
+    "questions": [
+      {
+        "question": "magic link auth",
+        "tokens": 190,
+        "latencyMs": 4.09,
+        "results": 2
+      },
+      {
+        "question": "session lifetime",
+        "tokens": 188,
+        "latencyMs": 2.56,
+        "results": 2
+      },
+      {
+        "question": "billing webhooks",
+        "tokens": 192,
+        "latencyMs": 2.58,
+        "results": 2
+      }
+    ],
+    "avgTokens": 190,
+    "avgLatencyMs": 3.08
+  },
+  "ratio": 2.5
+}

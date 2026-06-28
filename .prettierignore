@@ -1,0 +1,24 @@
+# build output and deps
+**/dist/**
+**/fixtures/**
+**/node_modules/**
+.pgdata/**
+coverage/**
+**/*.tsbuildinfo
+pnpm-lock.yaml
+LICENSE
+
+# hand-authored prose follows the writing-style rule, not prettier
+**/*.md
+.claude/**
+docs/**
+fundraising/**
+
+# generated benchmark output
+benchmark/
+
+# generated static demo snapshot
+packages/web/demo-static/
+
+# browser research snapshots
+.playwright-mcp/
