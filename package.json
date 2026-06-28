@@ -18,6 +18,7 @@
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter core db:migrate",
     "launch:preflight": "node scripts/launch-preflight.mjs",
+    "smoke:packed": "node scripts/packed-smoke.mjs",
     "marrow": "tsx packages/cli/src/main.ts",
     "benchmark": "tsx packages/core/scripts/benchmark.ts",
     "demo": "tsx packages/core/scripts/demo.ts",
