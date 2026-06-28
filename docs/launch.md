@@ -52,7 +52,10 @@ Remove parked A records such as `198.54.117.242`. The launch is not on the real 
 2. `pnpm lint`
 3. `pnpm test`
 4. `pnpm -r build`
-5. `pnpm launch:preflight`
-6. Create the changeset release commit and tag.
-7. Watch the release workflow publish packages.
-8. Rerun `pnpm launch:preflight` after npm and DNS propagation.
+5. `pnpm smoke:packed`
+6. `pnpm launch:preflight`
+7. Create the changeset release commit and tag.
+8. Watch the release workflow publish packages.
+9. Rerun `pnpm launch:preflight` after npm and DNS propagation.
+
+`pnpm smoke:packed` builds the workspace, packs the public packages, installs the tarballs into a disposable app, then verifies the CLI and MCP task/truth loop from the package artifacts.
