@@ -95,11 +95,11 @@ export function SettingsView({
           </a>
           <a
             className="settings-link"
-            href="https://marrowhq.com/pricing"
+            href="https://github.com/ElxMaj/marrow/discussions"
             target="_blank"
             rel="noreferrer"
           >
-            Billing
+            Support
           </a>
           <a
             className="settings-link"

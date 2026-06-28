@@ -115,6 +115,42 @@ export function createTools(core: Marrow): ToolDef[] {
       },
     },
     {
+      name: "prepare_task",
+      description:
+        "Prepare the compact task brief an agent should read before building: relevant decided goals and decisions, open or contested questions, exact provenance spans, safe-to-build vs ask-human-first sections, and optional drift check receipts. Never returns the whole brain.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          task: { type: "string", description: "the coding task the agent is about to do" },
+          check: { type: "boolean", description: "also scan the current diff for drift" },
+          repoPath: { type: "string", description: "repo path for check mode" },
+          scope: {
+            type: "string",
+            description: "diff scope for check mode: unstaged, staged, or a git ref/range",
+          },
+          semantic: { type: "boolean", description: "run semantic drift filtering when available" },
+        },
+        required: ["task"],
+      },
+      handler: async (args) => {
+        const { task, check, repoPath, scope, semantic } = z
+          .object({
+            task: z.string(),
+            check: z.boolean().optional(),
+            repoPath: z.string().optional(),
+            scope: z.string().optional(),
+            semantic: z.boolean().optional(),
+          })
+          .parse(args);
+        return core.prepareTask(task, {
+          check: check === true,
+          ...(repoPath !== undefined ? { repoPath } : {}),
+          ...(scope !== undefined ? { scope } : {}),
+          ...(semantic !== undefined ? { semantic } : {}),
+        });
+      },
+    },
+    {
       name: "append_evidence",
       description:
         "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Distillation happens separately.",
@@ -255,6 +291,13 @@ export function createTools(core: Marrow): ToolDef[] {
           events,
         };
       },
+    },
+    {
+      name: "maintain_truth",
+      description:
+        "Return the product truth maintenance brief: decided product/user goals, open proposed goals, contested facts, unanswered gaps, pending drift catches, connector health, and next human actions.",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => core.maintainTruth(),
     },
     {
       name: "accept_catch",

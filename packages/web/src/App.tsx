@@ -110,7 +110,7 @@ export function App(): JSX.Element {
   return (
     <div className="console" data-route={route}>
       <aside className="sidebar">
-        <a className="brand" href="https://marrowhq.com" aria-label="Marrow home">
+        <a className="brand" href="https://marrow-six.vercel.app" aria-label="Marrow home">
           <span className="mark" aria-hidden />
           <span className="brand-text">
             <h1>Marrow</h1>

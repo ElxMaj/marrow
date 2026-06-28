@@ -76,6 +76,85 @@ const SEMANTIC_CONFIDENCE_THRESHOLD = 0.7;
 // signal (0.25) does not, keeping goal catches conservative.
 const GOAL_DRIFT_THRESHOLD = 0.4;
 
+const BRIEF_LIMIT = 6;
+const TRUTH_LIMIT = 8;
+
+function nodeTitle(node: Distilled): string {
+  if (node.kind === "entity") return node.name;
+  if (node.kind === "decision") return node.title;
+  if (node.kind === "goal") return node.title;
+  return node.prompt;
+}
+
+function nodeSearchText(node: Distilled): string {
+  if (node.kind === "entity") return `${node.name} ${node.description ?? ""}`;
+  if (node.kind === "decision") return `${node.title} ${node.rationale}`;
+  if (node.kind === "goal") return `${node.title} ${node.description ?? ""}`;
+  return node.prompt;
+}
+
+function terms(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((term) => term.replace(/s$/, ""))
+      .filter((term) => term.length >= 3),
+  );
+}
+
+function relevance(task: string, node: Distilled): number {
+  const taskTerms = terms(task);
+  if (taskTerms.size === 0) return 0;
+  const textTerms = terms(nodeSearchText(node));
+  let score = 0;
+  for (const term of taskTerms) if (textTerms.has(term)) score += 1;
+  return score;
+}
+
+function byRelevance(task: string, searchIds: Set<string>) {
+  return (a: Distilled, b: Distilled): number => {
+    const scoreA = relevance(task, a) + (searchIds.has(a.id) ? 10 : 0);
+    const scoreB = relevance(task, b) + (searchIds.has(b.id) ? 10 : 0);
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return b.updatedAt.localeCompare(a.updatedAt);
+  };
+}
+
+function uniqueNodes(nodes: Distilled[]): Distilled[] {
+  const seen = new Set<string>();
+  const out: Distilled[] = [];
+  for (const node of nodes) {
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    out.push(node);
+  }
+  return out;
+}
+
+function uniqueBriefNodes(nodes: BriefNode[]): BriefNode[] {
+  const seen = new Set<string>();
+  const out: BriefNode[] = [];
+  for (const node of nodes) {
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    out.push(node);
+  }
+  return out;
+}
+
+function relevantOnly(task: string, searchIds: Set<string>, nodes: Distilled[]): Distilled[] {
+  return uniqueNodes(nodes)
+    .filter((node) => searchIds.has(node.id) || relevance(task, node) > 0)
+    .sort(byRelevance(task, searchIds));
+}
+
+function isGapQuestion(question: BriefNode): boolean {
+  return /goal gap|gap|never decided|feature or product|which feature|served feature/i.test(
+    question.title,
+  );
+}
+
 /** What ingest needs to hand distillation to the background queue. The Queue in
  *  queue.ts satisfies this; keeping it an interface keeps Marrow off pg-boss. */
 export interface DistillEnqueuer {
@@ -95,6 +174,51 @@ export interface TraceResult {
   source: string | undefined;
   spanText: string | undefined;
   spans: TraceSpan[];
+}
+
+export interface BriefNode {
+  id: string;
+  kind: Distilled["kind"];
+  title: string;
+  status: Status;
+  confidence: Distilled["confidence"];
+  provenance: TraceSpan[];
+  goalType?: "product" | "user";
+  entityId?: string;
+  relatesTo?: string[];
+  constraint?: boolean;
+}
+
+export interface TaskBrief {
+  task: string;
+  status: "safe_to_build" | "ask_human_first";
+  safeToBuild: { facts: BriefNode[] };
+  askHumanFirst: { questions: BriefNode[]; contestedFacts: BriefNode[] };
+  check?: {
+    createdDriftQuestions: BriefNode[];
+    catchEventIds: number[];
+    receiptData: Awaited<ReturnType<Marrow["renderCatchReceipt"]>>[];
+    nextCommands: { questionId: string; accept: string; dismiss: string }[];
+  };
+}
+
+export interface TruthMaintenanceBrief {
+  sourceOfTruth: { decidedGoals: BriefNode[]; decidedDecisions: BriefNode[] };
+  openProposedGoals: BriefNode[];
+  contestedFacts: BriefNode[];
+  gapQuestions: BriefNode[];
+  pendingCatches: Awaited<ReturnType<Marrow["renderCatchReceipt"]>>[];
+  connectorHealth: {
+    name: string;
+    kind: string;
+    enabled: boolean;
+    status: "ok" | "error" | "never" | "disabled" | "stale";
+    lastRunAt?: string;
+    lastError?: string;
+    totalItems: number;
+    hasSecret: boolean;
+  }[];
+  nextActions: string[];
 }
 
 export type ProposeInput =
@@ -550,6 +674,228 @@ export class Marrow {
 
   async listEntities(): Promise<Entity[]> {
     return this.store.listEntities();
+  }
+
+  private async briefNode(node: Distilled): Promise<BriefNode> {
+    const trace = await this.traceToSource(node.id);
+    return {
+      id: node.id,
+      kind: node.kind,
+      title: nodeTitle(node),
+      status: node.status,
+      confidence: node.confidence,
+      provenance: trace.spans,
+      ...(node.kind === "goal" ? { goalType: node.goalType } : {}),
+      ...(node.kind === "goal" && node.entityId !== undefined ? { entityId: node.entityId } : {}),
+      ...(node.kind === "question" && node.relatesTo !== undefined
+        ? { relatesTo: node.relatesTo }
+        : {}),
+      ...(node.kind === "decision" ? { constraint: node.constraint } : {}),
+    };
+  }
+
+  private async briefNodes(nodes: Distilled[], limit: number): Promise<BriefNode[]> {
+    const out: BriefNode[] = [];
+    for (const node of nodes.slice(0, limit)) out.push(await this.briefNode(node));
+    return out;
+  }
+
+  /**
+   * The agent decision gate. It returns only the task-relevant slice: decided
+   * goals/decisions that are safe to build from, open questions and contested
+   * facts that need a human first, and optional drift catches for the current
+   * diff. Every returned fact is expanded to exact provenance spans.
+   */
+  async prepareTask(
+    task: string,
+    options: {
+      check?: boolean | undefined;
+      repoPath?: string | undefined;
+      scope?: "unstaged" | "staged" | string | undefined;
+      semantic?: boolean | undefined;
+      hunks?: DiffHunk[] | undefined;
+    } = {},
+  ): Promise<TaskBrief> {
+    const search = await this.runSearch(task, 12);
+    const searchIds = new Set(search.results.map((node) => node.id));
+    const [decidedDecisions, decidedGoals, contestedDecisions, contestedGoals, openQuestions] =
+      await Promise.all([
+        this.store.listDecisions({ status: "decided" }),
+        this.store.listGoals({ status: "decided" }),
+        this.store.listDecisions({ status: "contested" }),
+        this.store.listGoals({ status: "contested" }),
+        this.getOpenQuestions(),
+      ]);
+
+    const safeFacts = relevantOnly(task, searchIds, [...decidedGoals, ...decidedDecisions]);
+    const contestedFacts = relevantOnly(task, searchIds, [
+      ...contestedGoals,
+      ...contestedDecisions,
+    ]);
+    const questionNodes = relevantOnly(task, searchIds, openQuestions);
+
+    let driftQuestions: BriefNode[] = [];
+    let check: TaskBrief["check"] | undefined;
+    if (options.check === true) {
+      const drift = await this.driftScan(options.repoPath ?? process.cwd(), {
+        ...(options.scope !== undefined ? { scope: options.scope } : {}),
+        semantic: options.semantic !== false,
+        ...(options.hunks !== undefined ? { hunks: options.hunks } : {}),
+        trigger: "loop",
+      });
+      const createdQuestions = drift.created.filter(
+        (node): node is Question => node.kind === "question",
+      );
+      driftQuestions = await this.briefNodes(createdQuestions, BRIEF_LIMIT);
+      const receiptData: NonNullable<TaskBrief["check"]>["receiptData"] = [];
+      for (const question of createdQuestions) {
+        try {
+          receiptData.push(await this.renderCatchReceipt(question.id));
+        } catch {
+          // Goal drift has no decision receipt. The question still carries its
+          // repo evidence span and catch event id.
+        }
+      }
+      check = {
+        createdDriftQuestions: driftQuestions,
+        catchEventIds: drift.events,
+        receiptData,
+        nextCommands: createdQuestions.map((question) => ({
+          questionId: question.id,
+          accept: `marrow accept ${question.id} --text "..."`,
+          dismiss: `marrow dismiss ${question.id} --reason "..."`,
+        })),
+      };
+    }
+
+    const questions = [...driftQuestions, ...(await this.briefNodes(questionNodes, BRIEF_LIMIT))];
+    const askHumanFirst = {
+      questions: uniqueBriefNodes(questions).slice(0, BRIEF_LIMIT),
+      contestedFacts: await this.briefNodes(contestedFacts, BRIEF_LIMIT),
+    };
+    const status =
+      askHumanFirst.questions.length > 0 || askHumanFirst.contestedFacts.length > 0
+        ? "ask_human_first"
+        : "safe_to_build";
+
+    return {
+      task,
+      status,
+      safeToBuild: { facts: await this.briefNodes(safeFacts, BRIEF_LIMIT) },
+      askHumanFirst,
+      ...(check !== undefined ? { check } : {}),
+    };
+  }
+
+  /**
+   * Product truth maintenance: the human-facing loop that shows which decided
+   * goals define the current truth, what is proposed or contested, what gaps are
+   * unanswered, which catches are pending, and whether ingest may be stale.
+   */
+  async maintainTruth(): Promise<TruthMaintenanceBrief> {
+    const [decidedGoals, decidedDecisions, openGoals, contestedGoals, contestedDecisions] =
+      await Promise.all([
+        this.store.listGoals({ status: "decided" }),
+        this.store.listDecisions({ status: "decided" }),
+        this.store.listGoals({ status: "open" }),
+        this.store.listGoals({ status: "contested" }),
+        this.store.listDecisions({ status: "contested" }),
+      ]);
+    const openQuestions = await this.getOpenQuestions();
+    const gapQuestions = (await this.briefNodes(openQuestions, 500)).filter(isGapQuestion);
+    const pendingCatches = await this.pendingCatchReceipts();
+    const connectors = await this.listConnectors();
+    const now = Date.now();
+    const staleMs = 7 * 24 * 60 * 60 * 1000;
+    const connectorHealth = connectors.map((connector) => {
+      const state = connector.state;
+      const stale =
+        connector.enabled &&
+        state?.lastRunAt !== undefined &&
+        now - new Date(state.lastRunAt).getTime() > staleMs;
+      const status: TruthMaintenanceBrief["connectorHealth"][number]["status"] = !connector.enabled
+        ? "disabled"
+        : state === null
+          ? "never"
+          : stale
+            ? "stale"
+            : state.lastStatus;
+      return {
+        name: connector.name,
+        kind: connector.kind,
+        enabled: connector.enabled,
+        status,
+        ...(state?.lastRunAt !== undefined ? { lastRunAt: state.lastRunAt } : {}),
+        ...(state?.lastError !== undefined ? { lastError: state.lastError } : {}),
+        totalItems: state?.totalItems ?? 0,
+        hasSecret: connector.hasSecret,
+      };
+    });
+
+    const openProposedGoals = await this.briefNodes(openGoals, TRUTH_LIMIT);
+    const contestedFacts = await this.briefNodes(
+      [...contestedGoals, ...contestedDecisions],
+      TRUTH_LIMIT,
+    );
+    const nextActions: string[] = [];
+    if (openProposedGoals.length > 0) {
+      nextActions.push("Promote or reject proposed goals so agents know which goals are decided.");
+    }
+    if (contestedFacts.length > 0) {
+      nextActions.push("Resolve contested goals or decisions before agents build on that area.");
+    }
+    if (gapQuestions.length > 0) {
+      nextActions.push("Answer gap questions, especially goals without a served feature.");
+    }
+    if (pendingCatches.length > 0) {
+      nextActions.push("Accept or dismiss recent drift catches.");
+    }
+    if (
+      connectorHealth.some(
+        (c) => c.status === "never" || c.status === "error" || c.status === "stale",
+      )
+    ) {
+      nextActions.push("Run or repair stale connectors so the room stays current.");
+    }
+    if (nextActions.length === 0) nextActions.push("No immediate maintenance action.");
+
+    return {
+      sourceOfTruth: {
+        decidedGoals: await this.briefNodes(decidedGoals, TRUTH_LIMIT),
+        decidedDecisions: await this.briefNodes(decidedDecisions, TRUTH_LIMIT),
+      },
+      openProposedGoals,
+      contestedFacts,
+      gapQuestions: gapQuestions.slice(0, TRUTH_LIMIT),
+      pendingCatches,
+      connectorHealth,
+      nextActions,
+    };
+  }
+
+  private async pendingCatchReceipts(): Promise<TruthMaintenanceBrief["pendingCatches"]> {
+    const surfaced = await this.store.listCatchEvents({ eventType: "catch_surfaced" });
+    const out: TruthMaintenanceBrief["pendingCatches"] = [];
+    const seen = new Set<string>();
+    for (const event of surfaced) {
+      if (!event.question_id || seen.has(event.question_id)) continue;
+      const question = await this.store.getQuestion(event.question_id);
+      if (!question || question.status !== "open") continue;
+      const events = await this.store.listCatchEvents({ questionId: question.id });
+      if (
+        events.some((e) => e.event_type === "catch_acted_on" || e.event_type === "catch_dismissed")
+      ) {
+        continue;
+      }
+      try {
+        out.push(await this.renderCatchReceipt(question.id));
+        seen.add(question.id);
+      } catch {
+        // Not every catch is a decision receipt. Skip unsanitizable receipts.
+      }
+      if (out.length >= TRUTH_LIMIT) break;
+    }
+    return out;
   }
 
   /**

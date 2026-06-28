@@ -63,6 +63,7 @@ const call = async (name: string, args: Record<string, unknown> = {}): Promise<u
 };
 
 beforeAll(() => {
+  process.env["MARROW_SECRET_KEY"] = process.env["MARROW_SECRET_KEY"] ?? "test-mcp-secret-key";
   execFileSync("node", [coreMigrate], { env: { ...process.env, DATABASE_URL }, stdio: "ignore" });
   store = new Store(DATABASE_URL);
   core = new Marrow(store, new FakeModel(transcript), new FakeEmbedding());
@@ -77,7 +78,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -91,9 +92,11 @@ describe("mcp tools", () => {
       "get_open_questions",
       "get_entity",
       "trace_to_source",
+      "prepare_task",
       "append_evidence",
       "propose_node",
       "check_drift",
+      "maintain_truth",
       "accept_catch",
       "dismiss_catch",
     ]);
@@ -341,5 +344,67 @@ describe("mcp tools", () => {
     expect(goal).toBeDefined();
     expect(goal?.status).toBe("open");
     expect(Array.isArray(goal?.provenance)).toBe(true);
+  });
+
+  it("prepare_task returns a task brief with decided facts and exact provenance spans", async () => {
+    const evidence = await store.insertEvidence({
+      text: "Dana: We decided magic links, no passwords.",
+      source: "interviews/auth.md",
+    });
+    const phrase = "magic links, no passwords";
+    const start = evidence.text.indexOf(phrase);
+    await store.insertDecision({
+      title: "Auth uses magic links, no passwords",
+      rationale: "",
+      constraint: true,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: evidence.id, start, end: start + phrase.length }],
+    });
+
+    const res = (await call("prepare_task", { task: "implement password login" })) as {
+      safeToBuild: {
+        facts: { title: string; status: string; provenance: { spanText: string }[] }[];
+      };
+      askHumanFirst: { questions: unknown[] };
+    };
+    expect(res.safeToBuild.facts[0]).toMatchObject({
+      title: "Auth uses magic links, no passwords",
+      status: "decided",
+    });
+    expect(res.safeToBuild.facts[0]?.provenance[0]?.spanText).toBe(phrase);
+    expect(res.askHumanFirst.questions.length).toBe(0);
+  });
+
+  it("maintain_truth returns maintenance sections without exposing connector secrets", async () => {
+    const evidence = await store.insertEvidence({
+      text: "Goal: Make onboarding self serve",
+      source: "standups/goals.md",
+    });
+    await store.insertGoal({
+      title: "Make onboarding self serve",
+      goalType: "product",
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: evidence.id, start: 0, end: evidence.text.length }],
+    });
+    await core.upsertConnector({
+      name: "slack",
+      kind: "slack",
+      enabled: true,
+      settings: { channelIds: ["C1"] },
+      secret: "xoxb-secret",
+    });
+
+    const res = (await call("maintain_truth", {})) as {
+      sourceOfTruth: { decidedGoals: { title: string; provenance: unknown[] }[] };
+      connectorHealth: { name: string; hasSecret?: boolean; secret?: string }[];
+      nextActions: string[];
+    };
+    expect(res.sourceOfTruth.decidedGoals[0]?.title).toBe("Make onboarding self serve");
+    expect(res.sourceOfTruth.decidedGoals[0]?.provenance.length).toBeGreaterThan(0);
+    expect(res.connectorHealth[0]).toMatchObject({ name: "slack" });
+    expect(JSON.stringify(res.connectorHealth)).not.toContain("xoxb-secret");
+    expect(res.nextActions.length).toBeGreaterThan(0);
   });
 });

@@ -76,7 +76,7 @@ Distilled nodes, yes. Raw evidence, no, by design, it is append-only. If you sel
 
 ## How does it plug into Claude Code or Cursor?
 
-Over MCP. Point your agent at the published server and it gets task-scoped tools: `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node` and `check_drift` (shaped writes). Every result tells the agent decided from open and traces to source. The agent can never promote a node to decided, only a human answer does that. Setup is in the [README](../README.md).
+Over MCP. Point your agent at the MCP server package and start with `prepare_task`: it returns the compact task brief with decided goals/decisions, open questions, provenance spans, and safe-to-build vs ask-human-first sections. `maintain_truth` gives the human maintenance brief for goals, proposed goals, contested facts, gap questions, pending catches and connector health. The lower-level task-scoped tools are still there: `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node` and `check_drift` (shaped writes). Every result tells the agent decided from open and traces to source. The agent can never promote a node to decided, only a human answer does that. Setup is in the [README](../README.md).
 
 ## Why does my agent get a slice and not the whole brain?
 

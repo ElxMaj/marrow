@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- All phases of the 2026 leadership roadmap: accept/dismiss drift catches, catch metrics, eval CLI, CI drift checks, watched-folder ingestion, marrow import, batch answering, public catch receipts, tiktoken benchmark, connector stubs, comparison docs, and security pages.
+- Support the 0.4.0 agent decision gate and product truth maintenance release.
 
 ## 0.3.0
 

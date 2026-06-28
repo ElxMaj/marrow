@@ -79,12 +79,12 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
 describe("mcp server (over the SDK transport)", () => {
-  it("advertises exactly the 11 tools with input schemas", async () => {
+  it("advertises exactly the task loop tools with input schemas", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual([
       "search",
@@ -93,9 +93,11 @@ describe("mcp server (over the SDK transport)", () => {
       "get_open_questions",
       "get_entity",
       "trace_to_source",
+      "prepare_task",
       "append_evidence",
       "propose_node",
       "check_drift",
+      "maintain_truth",
       "accept_catch",
       "dismiss_catch",
     ]);
