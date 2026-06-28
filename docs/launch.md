@@ -17,6 +17,8 @@ The preflight checks the current public launch surface:
 - `benchmark/report.json` is nonzero and public benchmark wording stays synthetic
 - packed package allowlists exclude built test files
 
+The human-facing adoption path lives in [Agent workflow](./agent-workflow.md). Update it whenever the CLI or MCP loop changes.
+
 ## Account Gates
 
 These checks need account access and cannot be fixed in code alone.

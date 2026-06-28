@@ -85,6 +85,8 @@ marrow truth
 
 Over MCP the same surfaces are `prepare_task` and `maintain_truth`, alongside task-scoped tools (`search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source`) plus shaped writes (`append_evidence`, `propose_node`, `check_drift`). Facts always come back with status and provenance. The human view of the same brain is the console (`marrow web`), see [docs/console.md](./docs/console.md).
 
+For the copy-paste team ritual, see [docs/agent-workflow.md](./docs/agent-workflow.md) and [templates/AGENTS.marrow.md](./templates/AGENTS.marrow.md).
+
 ## Stack
 
 - TypeScript everywhere, Node runtime.
