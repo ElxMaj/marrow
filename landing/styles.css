@@ -226,7 +226,7 @@ section {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 21px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1;
   color: var(--ink);
 }
@@ -371,7 +371,7 @@ section {
   font-variation-settings: "opsz" 144;
   font-size: clamp(44px, 7vw, 78px);
   line-height: 1.02;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
   color: var(--ink);
   max-width: 14ch;
 }
@@ -391,7 +391,7 @@ section {
     max-width: 16ch;
   }
   .standfirst {
-    max-width: 62ch;
+    max-width: 70ch;
   }
 }
 .cover-actions {
@@ -820,7 +820,7 @@ section {
   font-family: var(--font-display);
   font-weight: 620;
   font-variation-settings: "opsz" 40;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   opacity: 0;
 }
 [data-stage="decided"] .face-sans {
@@ -853,7 +853,7 @@ html.reduce [data-stage="decided"] .title-text {
   font-family: var(--font-display);
   font-weight: 620;
   font-variation-settings: "opsz" 40;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .fact-meta {
@@ -1105,6 +1105,31 @@ html.reduce [data-stage="decided"] .title-text {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+.brief-callouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+.brief-callout {
+  display: grid;
+  gap: 5px;
+  padding: 9px 18px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+.brief-callout + .brief-callout {
+  border-left: 1px solid var(--line);
+}
+.brief-label {
+  text-transform: uppercase;
+}
+.brief-safe .brief-label {
+  color: var(--decided);
+}
+.brief-ask .brief-label {
+  color: var(--open);
+}
 .fact-row {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr) 84px 150px;
@@ -1145,7 +1170,7 @@ html.reduce [data-stage="decided"] .title-text {
   font-size: 14px;
   font-weight: 600;
   font-variation-settings: "opsz" 40;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .f-conf {
   color: var(--ink-faint);
@@ -1188,7 +1213,7 @@ html.reduce [data-stage="decided"] .title-text {
   font-weight: 600;
   font-size: clamp(24px, 3vw, 32px);
   line-height: 1.18;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .intake-copy {
@@ -1277,7 +1302,7 @@ html.reduce [data-stage="decided"] .title-text {
   font-weight: 540;
   font-size: clamp(28px, 4vw, 44px);
   line-height: 1.2;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .moat-line {
@@ -1416,6 +1441,13 @@ html.reduce [data-stage="decided"] .title-text {
   }
   .fact-row {
     grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .brief-callouts {
+    grid-template-columns: 1fr;
+  }
+  .brief-callout + .brief-callout {
+    border-top: 1px solid var(--line);
+    border-left: none;
   }
   .fact-row .f-conf,
   .fact-row .cite {

@@ -73,7 +73,7 @@
           font-family: var(--font-display) !important;
           font-weight: 620 !important;
           font-variation-settings: "opsz" 40 !important;
-          letter-spacing: -0.01em !important;
+          letter-spacing: 0 !important;
         }
         #exhibit-a .pill-open,
         #exhibit-a .answer-row,
@@ -423,15 +423,25 @@
       <section class="exhibit" id="exhibit-c" aria-label="Exhibit C, what the agent reads">
         <h2 class="exhibit-head"><span class="ex-label">Exhibit C</span> · What the agent reads</h2>
         <p class="lead">
-          The agent never gets the whole file. It gets the slice for the task, with status and
-          citation on every fact. That is the difference between context and a dump.
+          The agent starts with a decision gate. It gets the slice for the task, with status and
+          citation on every fact, then checks its diff before review. That is the difference between
+          context and a dump.
         </p>
         <div class="sheet slice">
           <p class="sheet-head">
-            MCP · <span class="id">marrow_context</span>({ task: "build the delete flow" }) → 4
-            facts
+            MCP · <span class="id">prepare_task</span>({ task, check }) → compact brief
           </p>
           <div class="fact-rows">
+            <div class="brief-callouts" aria-label="Task brief gate">
+              <div class="brief-callout brief-safe">
+                <span class="brief-label">Safe to build</span>
+                <span>decided rows are buildable</span>
+              </div>
+              <div class="brief-callout brief-ask">
+                <span class="brief-label">Ask human first</span>
+                <span>open rows stop the task</span>
+              </div>
+            </div>
             <div class="fact-row" id="slice-magic" data-state="open">
               <span class="f-status st-open">Open</span>
               <span class="f-title">Deletes are soft for 30 days, then purged</span>
@@ -477,13 +487,15 @@
             </div>
           </div>
           <p class="agent-line">
-            Agent: dashboard sessions are still open (ev_77c1), asking before building.
+            Agent: prepare_task says dashboard sessions are still open (ev_77c1). Asking before
+            building.
           </p>
         </div>
         <p class="slice-caption">
           The slice, not the brain. The agent sees what is decided now and what is still open, and
           Marrow keeps it current, raising a question when code drifts from a decided goal instead
-          of letting the two quietly diverge.
+          of letting the two quietly diverge. Check mode returns the receipt, the catch event and
+          the accept or dismiss command.
           <a href="https://marrow-demo.vercel.app" data-demo-link>The same brain, live →</a>
         </p>
       </section>
@@ -511,6 +523,37 @@
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
               <span class="cmd"><span class="p">npx</span> @marrowhq/cli web</span>
+            </button>
+            <button
+              type="button"
+              class="intake-line"
+              data-copy='marrow loop "build the delete flow"'
+            >
+              <span class="c"
+                ># Give the agent its task brief before it codes
+                <span class="copied-note" aria-hidden="true">Copied</span></span
+              >
+              <span class="cmd"><span class="p">marrow</span> loop "build the delete flow"</span>
+            </button>
+            <button
+              type="button"
+              class="intake-line"
+              data-copy='marrow loop "build the delete flow" --check --unstaged'
+            >
+              <span class="c"
+                ># Check the diff before review
+                <span class="copied-note" aria-hidden="true">Copied</span></span
+              >
+              <span class="cmd"
+                ><span class="p">marrow</span> loop "build the delete flow" --check --unstaged</span
+              >
+            </button>
+            <button type="button" class="intake-line" data-copy="marrow truth">
+              <span class="c"
+                ># Keep the source of truth current
+                <span class="copied-note" aria-hidden="true">Copied</span></span
+              >
+              <span class="cmd"><span class="p">marrow</span> truth</span>
             </button>
             <button
               type="button"
