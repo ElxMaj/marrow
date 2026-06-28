@@ -37,6 +37,15 @@ Each version must match the package version in this repo. If it does not, `npx @
 
 ### Domain
 
+First clear the registrar hold. Current DNS can show Namecheap contact-verification nameservers:
+
+```text
+failed-whois-verification.namecheap.com
+verify-contact-details.namecheap.com
+```
+
+If those appear, sign in to Namecheap and verify the domain contact details before changing Vercel DNS. Vercel cannot own or serve the domain while the registrar is holding it.
+
 Add `marrowhq.com` to the Vercel project, then update DNS:
 
 ```text

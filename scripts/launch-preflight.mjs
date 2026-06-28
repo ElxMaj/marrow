@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
-import { resolve4, resolveCname } from "node:dns/promises";
+import { resolve4, resolveCname, resolveNs, resolveSoa } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,6 +148,30 @@ async function checkLiveSite() {
 }
 
 async function checkDomain() {
+  try {
+    const [nameservers, soa] = await Promise.all([
+      resolveNs("marrowhq.com"),
+      resolveSoa("marrowhq.com"),
+    ]);
+    const verificationRecords = [...nameservers, soa.nsname, soa.hostmaster].map((name) =>
+      name.toLowerCase(),
+    );
+    if (
+      verificationRecords.some(
+        (name) =>
+          name.includes("verify-contact-details.namecheap.com") ||
+          name.includes("failed-whois-verification.namecheap.com"),
+      )
+    ) {
+      fail(
+        "Namecheap domain verification",
+        "marrowhq.com is on Namecheap's failed WHOIS/contact-verification nameservers; verify domain contact details before changing Vercel DNS",
+      );
+    }
+  } catch {
+    // The A/CNAME checks below carry the actionable failure if NS/SOA lookup is unavailable.
+  }
+
   try {
     const addresses = await resolve4("marrowhq.com");
     if (addresses.includes("76.76.21.21")) {
