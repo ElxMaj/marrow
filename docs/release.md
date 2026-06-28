@@ -14,6 +14,7 @@ The open-source core ships to npm so `npx @marrowhq/cli` and `npx -y @marrowhq/m
 
 1. Add an `NPM_TOKEN` repo secret with publish rights: an npm **Automation** token (2FA-exempt) scoped to the `marrowhq` org, so CI can publish without a one-time password.
 2. Confirm `npm view @marrowhq/cli version` matches the package version after the release. If npm latest lags `package.json`, `npx @marrowhq/cli` runs the older published build.
+3. Run `pnpm launch:preflight`; see [Launch readiness](./launch.md) for the full account and domain checklist.
 
 ## Cutting a release
 
