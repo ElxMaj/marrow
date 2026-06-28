@@ -148,6 +148,19 @@ async function checkLiveSite() {
 }
 
 async function checkDomain() {
+  const vercelDomain = await run("vercel", ["domains", "inspect", "marrowhq.com"]);
+  if (vercelDomain.ok) {
+    pass("Vercel domain access", "marrowhq.com is visible to the Vercel account");
+  } else {
+    const reason =
+      vercelDomain.stderr
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.startsWith("Error:"))
+        ?.replace(/^Error:\s*/, "") ?? "could not inspect marrowhq.com";
+    fail("Vercel domain access", `marrowhq.com is not visible to Vercel: ${reason}`);
+  }
+
   try {
     const [nameservers, soa] = await Promise.all([
       resolveNs("marrowhq.com"),
