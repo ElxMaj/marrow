@@ -234,6 +234,9 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
                               promotion still goes through the answer loop)
 
 Bootstrap / maintain:
+  loop "<task>" [--check] [--staged|--unstaged|--since <ref>] [--no-semantic]
+                              Prepare a compact agent brief for one task
+  truth                       Show the product truth maintenance brief
   init [repoPath]             One-time repo onboarding scan (asks, never asserts)
   drift [repoPath] [--staged|--unstaged|--since <ref>] [--no-semantic] [--ci]
                               Flag code that diverged from a decided fact
@@ -385,6 +388,28 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       if (!nodeId) throw new Error("Usage: marrow trace <nodeId>");
       return core.traceToSource(nodeId);
     }
+
+    case "loop": {
+      const task = positional(rest);
+      if (!task) throw new Error('Usage: marrow loop "<task>" [--check]');
+      const since = flagValue(rest, "--since");
+      const staged = rest.includes("--staged");
+      const unstaged = rest.includes("--unstaged");
+      const noSemantic = rest.includes("--no-semantic");
+      let scope: "unstaged" | "staged" | string = "unstaged";
+      if (since) scope = since;
+      else if (staged) scope = "staged";
+      else if (unstaged) scope = "unstaged";
+      return core.prepareTask(task, {
+        check: rest.includes("--check"),
+        repoPath: process.cwd(),
+        scope,
+        semantic: !noSemantic,
+      });
+    }
+
+    case "truth":
+      return core.maintainTruth();
 
     case "add": {
       const file = positional(rest);
@@ -697,6 +722,17 @@ function formatRun(run: RunRecord): string {
   return `  [${run.status}] ${run.kind}${label} · ${Math.round(run.latencyMs)}ms${toks}${cost}${model}`;
 }
 
+function formatBriefNode(node: {
+  title: string;
+  kind: string;
+  status: string;
+  provenance?: { source: string; spanText: string }[];
+}): string {
+  const span = node.provenance?.[0];
+  const source = span ? `\n      Source: ${span.source}\n      "${span.spanText}"` : "";
+  return `  [${node.status}] ${node.kind}: ${node.title}${source}`;
+}
+
 /** Render one ingested source: where it came from, the detected format and
  *  speakers, and what (if anything) distillation produced. shared by `add`
  *  (one source) and `ingest` (a file, a folder, or audio/image). */
@@ -724,6 +760,137 @@ function formatIngestSummary(s: Record<string, unknown>): string {
 export function formatResult(result: unknown): string {
   if (!result || typeof result !== "object") return JSON.stringify(result, null, 2);
   const r = result as Record<string, unknown>;
+
+  // task brief: compact safe-to-build vs ask-human-first sections.
+  if ("safeToBuild" in r && "askHumanFirst" in r) {
+    const brief = r as {
+      task: string;
+      status: string;
+      safeToBuild: { facts: Parameters<typeof formatBriefNode>[0][] };
+      askHumanFirst: {
+        questions: Parameters<typeof formatBriefNode>[0][];
+        contestedFacts?: Parameters<typeof formatBriefNode>[0][];
+      };
+      check?: {
+        createdDriftQuestions: Parameters<typeof formatBriefNode>[0][];
+        catchEventIds: number[];
+        receiptData: {
+          decisionTitle: string;
+          path?: string;
+          lineStart?: number;
+          lineEnd?: number;
+          sourceLabel: string;
+        }[];
+        nextCommands: { accept: string; dismiss: string }[];
+      };
+    };
+    const safe =
+      brief.safeToBuild.facts.length === 0
+        ? "  (No decided task facts found.)"
+        : brief.safeToBuild.facts.map(formatBriefNode).join("\n");
+    const questions = brief.askHumanFirst.questions ?? [];
+    const contested = brief.askHumanFirst.contestedFacts ?? [];
+    const askItems = [...questions, ...contested];
+    const ask =
+      askItems.length === 0
+        ? "  (No open or contested task questions.)"
+        : askItems.map(formatBriefNode).join("\n");
+    const lines = [
+      `Task brief: ${brief.task}`,
+      `Status: ${brief.status}`,
+      "",
+      "Safe to build",
+      safe,
+      "",
+      "Ask a human first",
+      ask,
+    ];
+    if (brief.check) {
+      lines.push("", "Drift check");
+      if (brief.check.createdDriftQuestions.length === 0) {
+        lines.push("  (No drift caught.)");
+      } else {
+        lines.push(...brief.check.createdDriftQuestions.map(formatBriefNode));
+      }
+      if (brief.check.catchEventIds.length > 0) {
+        lines.push(
+          `  catch event id${brief.check.catchEventIds.length === 1 ? "" : "s"}: ${brief.check.catchEventIds.join(", ")}`,
+        );
+      }
+      for (const receipt of brief.check.receiptData) {
+        lines.push(
+          `  receipt: ${receipt.decisionTitle} · ${receipt.path ?? "unknown"}:${receipt.lineStart ?? "?"}-${receipt.lineEnd ?? "?"} · ${receipt.sourceLabel}`,
+        );
+      }
+      for (const command of brief.check.nextCommands) {
+        lines.push(`  accept: ${command.accept}`);
+        lines.push(`  dismiss: ${command.dismiss}`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  // truth maintenance brief: source-of-truth state and next human actions.
+  if ("sourceOfTruth" in r && "nextActions" in r) {
+    const brief = r as {
+      sourceOfTruth: {
+        decidedGoals: Parameters<typeof formatBriefNode>[0][];
+        decidedDecisions: Parameters<typeof formatBriefNode>[0][];
+      };
+      openProposedGoals: Parameters<typeof formatBriefNode>[0][];
+      contestedFacts: Parameters<typeof formatBriefNode>[0][];
+      gapQuestions: Parameters<typeof formatBriefNode>[0][];
+      pendingCatches: {
+        decisionTitle: string;
+        path?: string;
+        lineStart?: number;
+        lineEnd?: number;
+      }[];
+      connectorHealth: { name: string; kind: string; status: string; lastError?: string }[];
+      nextActions: string[];
+    };
+    const section = (title: string, items: Parameters<typeof formatBriefNode>[0][]) => [
+      title,
+      items.length === 0 ? "  (None)" : items.map(formatBriefNode).join("\n"),
+    ];
+    const lines = [
+      "Product truth maintenance",
+      "",
+      ...section("Decided goals", brief.sourceOfTruth.decidedGoals),
+      "",
+      ...section("Decided decisions", brief.sourceOfTruth.decidedDecisions),
+      "",
+      ...section("Open proposed goals", brief.openProposedGoals),
+      "",
+      ...section("Contested facts", brief.contestedFacts),
+      "",
+      ...section("Gap questions", brief.gapQuestions),
+      "",
+      "Pending catches",
+      brief.pendingCatches.length === 0
+        ? "  (None)"
+        : brief.pendingCatches
+            .map(
+              (c) =>
+                `  ${c.decisionTitle} · ${c.path ?? "unknown"}:${c.lineStart ?? "?"}-${c.lineEnd ?? "?"}`,
+            )
+            .join("\n"),
+      "",
+      "Connector health",
+      brief.connectorHealth.length === 0
+        ? "  (No connectors configured)"
+        : brief.connectorHealth
+            .map(
+              (c) =>
+                `  ${c.name} (${c.kind}) · ${c.status}${c.lastError ? ` · ${c.lastError}` : ""}`,
+            )
+            .join("\n"),
+      "",
+      "Next actions",
+      ...brief.nextActions.map((action) => `  - ${action}`),
+    ];
+    return lines.join("\n");
+  }
 
   // answer: the human promote-to-decided confirmation.
   if (Array.isArray(r.promoted)) {

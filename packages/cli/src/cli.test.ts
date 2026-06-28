@@ -862,6 +862,180 @@ describe("cli", () => {
     expect(list).toMatch(/\[decided\]/);
     expect(list).toMatch(/reduce churn to under two percent/);
   });
+
+  it("loop returns a task brief with safe-to-build and ask-human-first sections", async () => {
+    const fake = {
+      prepareTask: vi.fn().mockResolvedValue({
+        task: "implement password login",
+        status: "ask_human_first",
+        safeToBuild: {
+          facts: [
+            {
+              id: "dec_1",
+              kind: "decision",
+              title: "Auth uses magic links, no passwords",
+              status: "decided",
+              confidence: { value: 1, source: "human" },
+              provenance: [
+                {
+                  evidenceId: "ev_1",
+                  source: "interviews/auth.md",
+                  start: 18,
+                  end: 44,
+                  spanText: "magic links, no passwords",
+                },
+              ],
+            },
+          ],
+        },
+        askHumanFirst: {
+          questions: [
+            {
+              id: "q_1",
+              kind: "question",
+              title: "Do admins need recovery?",
+              status: "open",
+              confidence: { value: 0.6, source: "model" },
+              provenance: [
+                {
+                  evidenceId: "ev_1",
+                  source: "interviews/auth.md",
+                  start: 0,
+                  end: 4,
+                  spanText: "Dana",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    } as unknown as Marrow;
+
+    const out = await runCommand(fake, ["loop", "implement password login"]);
+    expect(fake.prepareTask).toHaveBeenCalledWith("implement password login", {
+      check: false,
+      repoPath: process.cwd(),
+      scope: "unstaged",
+      semantic: true,
+    });
+    const rendered = formatResult(out);
+    expect(rendered).toContain("Safe to build");
+    expect(rendered).toContain("Auth uses magic links, no passwords");
+    expect(rendered).toContain("Ask a human first");
+    expect(rendered).toContain("interviews/auth.md");
+  });
+
+  it("loop --check maps diff flags and renders catch next commands", async () => {
+    const fake = {
+      prepareTask: vi.fn().mockResolvedValue({
+        task: "implement password login",
+        status: "ask_human_first",
+        safeToBuild: { facts: [] },
+        askHumanFirst: { questions: [] },
+        check: {
+          createdDriftQuestions: [
+            {
+              id: "q_9",
+              kind: "question",
+              title: "drift: code may contradict magic links",
+              status: "open",
+              confidence: { value: 0.8, source: "model" },
+              provenance: [
+                {
+                  evidenceId: "ev_9",
+                  source: "repo:src/auth.ts:1-1",
+                  start: 0,
+                  end: 12,
+                  spanText: "passwordHash",
+                },
+              ],
+            },
+          ],
+          catchEventIds: [42],
+          receiptData: [
+            {
+              id: "q_9",
+              status: "open",
+              decisionTitle: "Auth uses magic links, no passwords",
+              path: "src/auth.ts",
+              lineStart: 1,
+              lineEnd: 1,
+              sourceLabel: "1 evidence span",
+              surfacedAt: "2026-06-28T00:00:00.000Z",
+            },
+          ],
+          nextCommands: [
+            {
+              questionId: "q_9",
+              accept: 'marrow accept q_9 --text "..."',
+              dismiss: 'marrow dismiss q_9 --reason "..."',
+            },
+          ],
+        },
+      }),
+    } as unknown as Marrow;
+
+    const out = await runCommand(fake, [
+      "loop",
+      "implement password login",
+      "--check",
+      "--staged",
+      "--no-semantic",
+    ]);
+    expect(fake.prepareTask).toHaveBeenCalledWith("implement password login", {
+      check: true,
+      repoPath: process.cwd(),
+      scope: "staged",
+      semantic: false,
+    });
+    const rendered = formatResult(out);
+    expect(rendered).toContain("Drift check");
+    expect(rendered).toContain("catch event id: 42");
+    expect(rendered).toContain("marrow accept q_9");
+    expect(rendered).toContain("src/auth.ts");
+  });
+
+  it("truth returns a maintenance brief with next human actions", async () => {
+    const fake = {
+      maintainTruth: vi.fn().mockResolvedValue({
+        sourceOfTruth: {
+          decidedGoals: [
+            {
+              id: "goal_1",
+              kind: "goal",
+              title: "Make onboarding self serve",
+              status: "decided",
+              confidence: { value: 1, source: "human" },
+              provenance: [
+                {
+                  evidenceId: "ev_1",
+                  source: "standups/goals.md",
+                  start: 0,
+                  end: 10,
+                  spanText: "goal text",
+                },
+              ],
+            },
+          ],
+          decidedDecisions: [],
+        },
+        openProposedGoals: [],
+        contestedFacts: [],
+        gapQuestions: [],
+        pendingCatches: [],
+        connectorHealth: [{ name: "slack", kind: "slack", enabled: true, status: "never" }],
+        nextActions: ["Run `marrow sync slack` or check the connector."],
+      }),
+    } as unknown as Marrow;
+
+    const out = await runCommand(fake, ["truth"]);
+    expect(fake.maintainTruth).toHaveBeenCalledOnce();
+    const rendered = formatResult(out);
+    expect(rendered).toContain("Product truth maintenance");
+    expect(rendered).toContain("Make onboarding self serve");
+    expect(rendered).toContain("Connector health");
+    expect(rendered).toContain("Next actions");
+  });
 });
 
 describe("cli: connectors + observability", () => {

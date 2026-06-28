@@ -1,7 +1,6 @@
 name: release
 # publishes ONLY on a tagged release (v*), never on a normal merge. publishing
-# is a no-op until the public packages flip `private: false` (after the marrow
-# org and npm name are secured) and NPM_TOKEN is set. see docs/release.md.
+# requires an NPM_TOKEN repo secret with publish rights. see docs/release.md.
 on:
   push:
     tags: ["v*"]

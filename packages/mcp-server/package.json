@@ -1,6 +1,6 @@
 {
   "name": "@marrowhq/mcp-server",
-  "description": "MCP server for Marrow, the product context layer for coding agents. Serves task-scoped product truth over MCP (search, get_decisions, get_open_questions, get_entity, trace_to_source, check_drift), with status and provenance on every fact.",
+  "description": "MCP server for Marrow: task briefs, product truth maintenance, drift checks, and provenance-backed product context for coding agents.",
   "version": "0.4.0",
   "private": false,
   "type": "module",
@@ -13,7 +13,8 @@
     "marrow-mcp": "./dist/main.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

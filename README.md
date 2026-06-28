@@ -73,7 +73,17 @@ See [docs/security.md](./docs/security.md) for architecture, retention, and mode
 
 ## Access for agents
 
-MCP server and CLI are first class equals. Task scoped tools (`search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source`) plus shaped writes (append evidence, propose nodes, check drift). Facts always come back with status and provenance. Fast enough to sit inside an agent loop. The human view of the same brain is the console (`marrow web`), see [docs/console.md](./docs/console.md).
+MCP server and CLI are first class equals. The task loop is explicit:
+
+```bash
+marrow loop "implement password login"
+marrow loop "implement password login" --check --unstaged
+marrow truth
+```
+
+`loop` returns the compact agent brief: relevant decided goals and decisions, relevant open or contested questions, exact provenance spans, and clear **safe to build** vs **ask a human first** sections. `--check` also runs drift detection and returns created questions, catch event ids, sanitized receipt data, and accept/dismiss commands.
+
+Over MCP the same surfaces are `prepare_task` and `maintain_truth`, alongside task-scoped tools (`search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source`) plus shaped writes (`append_evidence`, `propose_node`, `check_drift`). Facts always come back with status and provenance. The human view of the same brain is the console (`marrow web`), see [docs/console.md](./docs/console.md).
 
 ## Stack
 
@@ -143,7 +153,7 @@ See [docs/observability.md](./docs/observability.md).
 
 ## Connect to Claude Code or Codex
 
-Marrow serves task-scoped context to your coding agent over MCP. Point Claude Code at the published server:
+Marrow serves task-scoped context to your coding agent over MCP. Point Claude Code at the MCP server package:
 
 ```bash
 claude mcp add marrow \
@@ -154,7 +164,7 @@ claude mcp add marrow \
 
 Embeddings are zero-config (a local model runs in-process), so no embedding endpoint is required; set `MARROW_EMBEDDING_BASE_URL` only if you want to use your own. For Codex or any other MCP host, use the same command and env as an `mcpServers` entry.
 
-The agent then has `search`, `get_decisions`, `get_open_questions`, `get_entity` and `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node`, and `check_drift` (shaped writes). `check_drift` scans the working repo against the room's decided facts and flags code that contradicts one as an open question, the code-time guardrail, so the agent does not build something the room decided against. It can never promote a node to decided; only a human answer does.
+The agent then starts with `prepare_task` for its task brief and can call `maintain_truth` when a human wants the source of truth health. It still has `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity` and `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node`, and `check_drift` (shaped writes). `check_drift` scans the working repo against the room's decided facts and flags code that contradicts one as an open question, the code-time guardrail, so the agent does not build something the room decided against. It can never promote a node to decided; only a human answer does.
 
 ## Self host
 

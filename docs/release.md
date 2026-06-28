@@ -1,6 +1,6 @@
 # Releasing Marrow
 
-The open-source core ships to npm so `npx @marrowhq/cli` and `npx -y @marrowhq/mcp-server` work from a clean machine. Publishing is set up but intentionally not yet enabled.
+The open-source core ships to npm so `npx @marrowhq/cli` and `npx -y @marrowhq/mcp-server` work from a clean machine. The packages exist under the `@marrowhq` scope. A new release still needs npm publish credentials.
 
 ## What is in place
 
@@ -10,17 +10,17 @@ The open-source core ships to npm so `npx @marrowhq/cli` and `npx -y @marrowhq/m
 - `.github/workflows/release.yml` builds and runs `changeset publish` on a tagged release (`v*`) only, never on a normal merge.
 - `LICENSE` (Apache-2.0) and `NOTICE` at the root; `license` + `repository` in each public package.
 
-## Before the first publish (open items)
+## Before the next publish (open items)
 
-1. Secure the npm org and scope: the org is `marrowhq` and the scope is `@marrowhq` (the unscoped `marrow` name is already taken on npm). The CLI resolves as `npx @marrowhq/cli`; the MCP server as `npx -y @marrowhq/mcp-server`.
-2. Add an `NPM_TOKEN` repo secret with publish rights: an npm **Automation** token (2FA-exempt) scoped to the `marrowhq` org, so CI can publish without a one-time password.
+1. Add an `NPM_TOKEN` repo secret with publish rights: an npm **Automation** token (2FA-exempt) scoped to the `marrowhq` org, so CI can publish without a one-time password.
+2. Confirm `npm view @marrowhq/cli version` matches the package version after the release. If npm latest lags `package.json`, `npx @marrowhq/cli` runs the older published build.
 
-## Cutting a release (once enabled)
+## Cutting a release
 
 ```bash
 pnpm changeset            # describe the change
 pnpm changeset version    # bump versions + changelogs (the public packages move together)
-git commit -am "release" && git tag v0.1.0 && git push --tags
+git commit -am "release" && git tag v0.4.0 && git push --follow-tags
 # the release workflow builds and publishes on the tag
 ```
 
@@ -28,7 +28,7 @@ git commit -am "release" && git tag v0.1.0 && git push --tags
 
 ```bash
 pnpm -r build
-npm pack --workspace packages/cli   # inspect the tarball: dist/main.js + the marrow bin
+(cd packages/cli && pnpm pack --pack-destination /tmp)
 ```
 
 Note: a packed CLI tarball depends on `@marrowhq/core` and `@marrowhq/shared`; `npx @marrowhq/cli` works once those are published together (changesets handles the coordinated release and rewrites `workspace:*` to real versions).

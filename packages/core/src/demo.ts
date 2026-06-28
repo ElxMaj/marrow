@@ -16,7 +16,7 @@ import {
 /** The hero-slice interview, inlined so `marrow demo` ships self-contained in
  *  the published package (no fixture file to resolve at runtime). The landing
  *  page quotes these lines verbatim and the demo seed re-ingests this exact
- *  text, so `npx marrow demo`, the hosted demo and marrowhq.com tell one
+ *  text, so `npx marrow demo`, the hosted demo and the launch site tell one
  *  story (landing/check-ids.mjs holds that contract). Edit with care. */
 export const DEMO_INTERVIEW = `# interview: acme design partner advisory, 2026-05-12
 

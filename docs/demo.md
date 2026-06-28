@@ -47,7 +47,7 @@ root). The README "connect to Claude Code or Codex" section has the full
 }
 ```
 
-The agent then has `search`, `get_decisions`, `get_open_questions`, `get_entity`, `trace_to_source`, plus the shaped writes. Every result carries status and provenance, and no tool can set a node decided.
+The agent starts with `prepare_task` for a compact task brief, can call `maintain_truth` for the maintenance brief, and still has `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity`, `trace_to_source`, plus the shaped writes. Every result carries status and provenance, and no tool can set a node decided.
 
 ## Browse the brain
 

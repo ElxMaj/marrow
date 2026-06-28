@@ -1,6 +1,6 @@
 {
   "name": "@marrowhq/cli",
-  "description": "Marrow CLI, the product context layer for coding agents. Ingest meeting transcripts in many formats, distill them into decided vs open product truth with provenance, work the question loop, and serve your coding agent over MCP.",
+  "description": "Marrow CLI, the product context layer for coding agents: ingest the room, prepare task briefs, maintain product truth, and catch drift.",
   "version": "0.4.0",
   "private": false,
   "type": "module",
@@ -14,6 +14,7 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
     "benchmark"
   ],
   "license": "Apache-2.0",

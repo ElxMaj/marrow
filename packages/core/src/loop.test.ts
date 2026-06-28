@@ -23,6 +23,14 @@ const span = (text: string, phrase: string) => {
   if (start < 0) throw new Error(`phrase not found: ${phrase}`);
   return { start, end: start + phrase.length };
 };
+const hunk = (path: string, newLines: string, lineStart = 1) => ({
+  path,
+  lineStart,
+  lineEnd: lineStart + newLines.split("\n").length - 1,
+  oldLines: "",
+  newLines,
+  hunkHeader: "@@ -0,0 +1,1 @@",
+});
 const decisionExtraction = (text: string, title: string) => ({
   decisions: [{ title, rationale: "", ...span(text, title) }],
 });
@@ -61,6 +69,7 @@ const human = { value: 1, source: "human" as const };
 const modelConf = { value: 0.6, source: "model" as const };
 
 beforeAll(() => {
+  process.env["MARROW_SECRET_KEY"] = process.env["MARROW_SECRET_KEY"] ?? "test-loop-secret-key";
   execFileSync("node", [join(here, "..", "scripts", "migrate.mjs")], {
     env: { ...process.env, DATABASE_URL },
     stdio: "ignore",
@@ -79,7 +88,7 @@ afterAll(async () => {
 beforeEach(async () => {
   model.reset();
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -349,6 +358,147 @@ describe("question loop", () => {
         (f) => (f.relatesTo ?? []).includes(b.id) && (f.relatesTo ?? []).includes(c.id),
       ),
     ).toBe(true);
+  });
+});
+
+describe("agent decision gate and truth maintenance", () => {
+  async function seedPasswordTruth() {
+    const text =
+      "Dana: We decided magic links, no passwords. Password login is explicitly out for launch.";
+    const ev = await store.insertEvidence({ text, source: "interviews/auth.md" });
+    const start = text.indexOf("magic links, no passwords");
+    const decision = await store.insertDecision({
+      title: "Auth uses magic links, no passwords",
+      rationale: "password login is out for launch",
+      constraint: true,
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: ev.id, start, end: start + "magic links, no passwords".length }],
+    });
+    const goal = await store.insertGoal({
+      title: "Users sign in without password setup",
+      goalType: "user",
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: ev.id, start: 0, end: text.length }],
+    });
+    const question = await store.insertQuestion({
+      prompt: "Do admins need a recovery path without passwords?",
+      relatesTo: [decision.id],
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    await store.insertDecision({
+      title: "Billing stays on Stripe",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    return { decision, goal, question };
+  }
+
+  it("prepareTask returns a compact task brief with decided facts, open questions and exact spans", async () => {
+    const { decision, question } = await seedPasswordTruth();
+    const brief = await core.prepareTask("implement password login");
+
+    expect(brief.task).toBe("implement password login");
+    expect(brief.status).toBe("ask_human_first");
+    expect(brief.safeToBuild.facts.map((f) => f.id)).toContain(decision.id);
+    expect(brief.safeToBuild.facts.map((f) => f.title)).not.toContain("Billing stays on Stripe");
+    const fact = brief.safeToBuild.facts.find((f) => f.id === decision.id);
+    expect(fact?.status).toBe("decided");
+    expect(fact?.provenance[0]).toMatchObject({
+      source: "interviews/auth.md",
+      spanText: "magic links, no passwords",
+    });
+    expect(brief.askHumanFirst.questions.map((q) => q.id)).toContain(question.id);
+    expect(brief.askHumanFirst.questions[0]?.status).toBe("open");
+    expect(brief.askHumanFirst.questions[0]?.provenance[0]?.spanText).toBe("Dana");
+    expect(brief.safeToBuild.facts.length).toBeLessThanOrEqual(6);
+    expect(brief.askHumanFirst.questions.length).toBeLessThanOrEqual(6);
+  });
+
+  it("prepareTask check mode runs drift, creates catch events, receipts and next commands", async () => {
+    await seedPasswordTruth();
+    const brief = await core.prepareTask("implement password login", {
+      check: true,
+      repoPath: ".",
+      semantic: false,
+      hunks: [hunk("src/auth.ts", "const passwordHash = hash(password);", 12)],
+    });
+
+    expect(brief.check?.createdDriftQuestions.length).toBeGreaterThan(0);
+    expect(brief.check?.catchEventIds.length).toBe(brief.check?.createdDriftQuestions.length);
+    expect(brief.check?.receiptData[0]).toMatchObject({
+      path: "src/auth.ts",
+      lineStart: 12,
+      sourceLabel: expect.stringMatching(/evidence span/),
+    });
+    expect(brief.check?.nextCommands[0]?.accept).toMatch(/^marrow accept q_/);
+    expect(brief.check?.nextCommands[0]?.dismiss).toMatch(/^marrow dismiss q_/);
+    expect(brief.askHumanFirst.questions.some((q) => /^drift:/i.test(q.title))).toBe(true);
+  });
+
+  it("maintainTruth returns goals, proposed goals, contested facts, gaps, pending catches, connector health and next actions", async () => {
+    const { decision } = await seedPasswordTruth();
+    const text = "Product goal: make onboarding self serve";
+    const ev = await store.insertEvidence({ text, source: "standups/goals.md" });
+    await store.insertGoal({
+      title: "Make onboarding self serve",
+      goalType: "product",
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: ev.id, start: 0, end: text.length }],
+    });
+    await store.insertGoal({
+      title: "Offer passkeys someday",
+      goalType: "user",
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 12 }],
+    });
+    await store.insertDecision({
+      title: "Password login might return",
+      rationale: "",
+      constraint: false,
+      status: "contested",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 12 }],
+    });
+    await store.insertQuestion({
+      prompt: "goal gap: which feature serves the onboarding goal?",
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 12 }],
+    });
+    const { created } = await core.driftScan(".", {
+      hunks: [hunk("src/auth.ts", "const passwordHash = hash(password);")],
+      semantic: false,
+    });
+    expect(created.length).toBeGreaterThan(0);
+    await core.upsertConnector({
+      name: "slack",
+      kind: "slack",
+      enabled: true,
+      settings: { channelIds: ["C1"] },
+      secret: "xoxb-test",
+    });
+
+    const brief = await core.maintainTruth();
+    expect(brief.sourceOfTruth.decidedGoals.some((g) => g.title.includes("self serve"))).toBe(true);
+    expect(brief.sourceOfTruth.decidedGoals.every((g) => g.status === "decided")).toBe(true);
+    expect(brief.openProposedGoals.some((g) => g.title.includes("passkeys"))).toBe(true);
+    expect(brief.contestedFacts.some((f) => f.title.includes("Password login"))).toBe(true);
+    expect(brief.gapQuestions.some((q) => /goal gap/i.test(q.title))).toBe(true);
+    expect(brief.pendingCatches.some((c) => c.decisionTitle === decision.title)).toBe(true);
+    expect(brief.connectorHealth.some((c) => c.name === "slack" && c.status === "never")).toBe(
+      true,
+    );
+    expect(brief.nextActions.length).toBeGreaterThan(0);
+    expect(brief.sourceOfTruth.decidedGoals[0]?.provenance[0]?.source).toBeDefined();
   });
 });
 
