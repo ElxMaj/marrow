@@ -174,6 +174,8 @@ Open source core, Apache 2.0, self host on nothing but Postgres and one model ke
 
 Early, but usable. The core loop is in place: ingest product-room evidence, distill decided vs open product truth with provenance, serve task-scoped context over CLI/MCP, maintain goals, and catch drift against decided facts.
 
+Launch operations live in [docs/launch.md](./docs/launch.md). `pnpm launch:preflight` checks npm, GitHub, Vercel, DNS, benchmark claims, and package allowlists before a public push.
+
 ## License
 
 Apache 2.0. See [LICENSE](./LICENSE).
