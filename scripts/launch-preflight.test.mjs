@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildPreflightReport, formatTextReport } from "./launch-preflight.mjs";
+import {
+  buildPreflightReport,
+  evaluateHeroSourcePath,
+  formatTextReport,
+} from "./launch-preflight.mjs";
 
 test("preflight report includes concrete next actions for launch blockers", () => {
   const report = buildPreflightReport([
@@ -59,4 +63,22 @@ test("preflight next actions respect the checked repository context", () => {
     report.nextActions[0].command,
     "gh run list --repo ElxMaj/marrow-internal --branch main --workflow ci --limit 1",
   );
+});
+
+test("hero source path points evaluators at the full setup instead of a half-command", () => {
+  const oldHero = `<section class="cover">
+    <button type="button" class="cmd-chip" data-copy="pnpm marrow demo">
+      <span class="cmd-text">pnpm marrow demo</span>
+    </button>
+  </section>`;
+  const newHero = `<section class="cover">
+    <a class="btn btn-primary" href="#start">Run from source</a>
+  </section>`;
+
+  assert.equal(evaluateHeroSourcePath(oldHero).ok, false);
+  assert.match(evaluateHeroSourcePath(oldHero).detail, /before the source setup/);
+  assert.deepEqual(evaluateHeroSourcePath(newHero), {
+    ok: true,
+    detail: "hero points at source setup",
+  });
 });

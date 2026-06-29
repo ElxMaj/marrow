@@ -172,10 +172,7 @@
           the product moves, and puts the agent in&nbsp;it.
         </p>
         <div class="cover-actions">
-          <button type="button" class="cmd-chip" data-copy="pnpm marrow demo">
-            <span class="cmd-text">pnpm marrow demo</span>
-            <span class="cmd-copied" aria-hidden="true">Copied</span>
-          </button>
+          <a class="btn btn-primary" href="#start">Run from source</a>
           <a class="btn btn-ghost" href="https://github.com/ElxMaj/marrow#readme">Read the docs</a>
         </div>
         <p class="cover-meta">Open source, Apache 2.0 · Runs on one Postgres · Default Claude</p>
@@ -783,7 +780,7 @@
         window.addEventListener("scroll", onScroll, { passive: true });
       })();
 
-      // copy chips: the cover command and the intake lines. label crossfades
+      // copy chips: intake lines. label crossfades
       // to "copied" for 1.2s. a command you can paste beats a get-started.
       (function () {
         document.querySelectorAll("[data-copy]").forEach(function (el) {

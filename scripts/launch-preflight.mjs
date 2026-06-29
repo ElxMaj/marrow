@@ -92,6 +92,14 @@ function nextActionFor(check, context = defaultReportContext) {
       action: "Restore the approved hero sentence with capitalized sentence starts.",
     };
   }
+  if (check.name === "hero source path") {
+    return {
+      ...base,
+      action:
+        "Point the hero CTA at the full source setup section while npm latest still lags the repo.",
+      command: 'rg -n "Run from source|cmd-chip|pnpm marrow demo" landing/index.html',
+    };
+  }
   if (check.name === "demo link") {
     return {
       ...base,
@@ -215,6 +223,24 @@ export function formatTextReport(report) {
   }
 
   return lines.join("\n");
+}
+
+export function evaluateHeroSourcePath(html) {
+  const cover = html.match(/<section class="cover">([\s\S]*?)<\/section>/)?.[1];
+  if (!cover) return { ok: false, detail: "missing cover section" };
+  if (cover.includes('data-copy="pnpm marrow demo"')) {
+    return {
+      ok: false,
+      detail: "hero copies pnpm marrow demo before the source setup",
+    };
+  }
+  if (cover.includes('href="#start"') && cover.includes("Run from source")) {
+    return { ok: true, detail: "hero points at source setup" };
+  }
+  return {
+    ok: false,
+    detail: "hero does not point at the source setup",
+  };
 }
 
 async function run(command, args, options = {}) {
@@ -364,6 +390,9 @@ async function checkLiveSite() {
   } else {
     fail("hero capitalization", "hero copy does not contain the approved sentence");
   }
+  const heroSourcePath = evaluateHeroSourcePath(html);
+  if (heroSourcePath.ok) pass("hero source path", heroSourcePath.detail);
+  else fail("hero source path", heroSourcePath.detail);
 
   const demoUrlMatch = html.match(/var DEMO_URL = "([^"]+)"/);
   const demoUrl = demoUrlMatch?.[1];
