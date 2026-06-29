@@ -150,8 +150,7 @@ export function App(): JSX.Element {
           <div className="banner readonly" role="note">
             <p>
               A seeded brain, read only. Answers run in a sandbox and nothing is saved: promote
-              something and watch it settle. Run it locally to write:{" "}
-              <code>npx @marrowhq/cli web</code>
+              something and watch it settle. Run it locally to write: <code>pnpm marrow web</code>
             </p>
           </div>
         )}

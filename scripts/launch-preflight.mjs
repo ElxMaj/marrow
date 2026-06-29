@@ -172,6 +172,25 @@ async function checkLiveSite() {
     fail("hero capitalization", "hero copy does not contain the approved sentence");
   }
 
+  const demoUrlMatch = html.match(/var DEMO_URL = "([^"]+)"/);
+  const demoUrl = demoUrlMatch?.[1];
+  if (!demoUrl) {
+    fail("demo link", "missing DEMO_URL constant");
+  } else if (demoUrl.startsWith("#")) {
+    const id = demoUrl.slice(1);
+    const hasAnchor = new RegExp(`id="${id}"`).test(html);
+    if (hasAnchor) pass("demo link", `points at on-page ${demoUrl}`);
+    else fail("demo link", `${demoUrl} does not match an on-page section`);
+  } else {
+    try {
+      const demo = await fetch(demoUrl, { method: "HEAD", redirect: "follow" });
+      if (demo.ok) pass("demo link", `HTTP ${demo.status}`);
+      else fail("demo link", `${demoUrl} returned HTTP ${demo.status}`);
+    } catch (error) {
+      fail("demo link", error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const advertisedNpxPackages = [
     ["@marrowhq/cli", "npx @marrowhq/cli"],
     ["@marrowhq/mcp-server", "npx -y @marrowhq/mcp-server"],

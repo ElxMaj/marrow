@@ -1458,7 +1458,6 @@ html.reduce [data-stage="decided"] .title-text {
   .masthead-nav {
     gap: 14px;
   }
-  .masthead-nav a[href*="npmjs"],
   .masthead-nav .nav-gh {
     display: none;
   }

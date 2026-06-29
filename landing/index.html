@@ -127,10 +127,9 @@
           Marrow
         </a>
         <nav class="masthead-nav" aria-label="Primary">
-          <a href="https://marrow-demo.vercel.app" data-demo-link>Live demo</a>
+          <a href="#start" data-demo-link>Run demo</a>
           <a href="https://github.com/ElxMaj/marrow#readme">Docs</a>
           <a href="#support">Support</a>
-          <a href="https://www.npmjs.com/package/@marrowhq/cli">npm</a>
           <a href="https://github.com/ElxMaj/marrow" class="nav-gh">GitHub</a>
           <button
             type="button"
@@ -173,8 +172,8 @@
           the product moves, and puts the agent in&nbsp;it.
         </p>
         <div class="cover-actions">
-          <button type="button" class="cmd-chip" data-copy="npx @marrowhq/cli demo">
-            <span class="cmd-text">npx @marrowhq/cli demo</span>
+          <button type="button" class="cmd-chip" data-copy="pnpm marrow demo">
+            <span class="cmd-text">pnpm marrow demo</span>
             <span class="cmd-copied" aria-hidden="true">Copied</span>
           </button>
           <a class="btn btn-ghost" href="https://github.com/ElxMaj/marrow#readme">Read the docs</a>
@@ -407,8 +406,8 @@
                 </button>
                 · 0.60 · Model
               </p>
-              <a class="answer-link" href="https://marrow-demo.vercel.app" data-demo-link>
-                Your answer promotes it to decided →
+              <a class="answer-link" href="#start" data-demo-link>
+                Run the loop and promote it →
               </a>
             </div>
             <p class="margin-note note-loop">
@@ -455,12 +454,7 @@
               <span class="f-status st-decided">Decided</span>
               <span class="f-title is-decided">Pricing is per workspace, flat</span>
               <span class="f-conf">1.00 Human</span>
-              <a
-                class="cite"
-                href="https://marrow-demo.vercel.app"
-                data-demo-link
-                data-ev="ev_9b2e"
-                data-span="62-103"
+              <a class="cite" href="#start" data-demo-link data-ev="ev_9b2e" data-span="62-103"
                 >ev_9b2e [62–103]</a
               >
             </div>
@@ -476,12 +470,7 @@
               <span class="f-status st-entity">Entity</span>
               <span class="f-title">The editor</span>
               <span class="f-conf">0.85 Model</span>
-              <a
-                class="cite"
-                href="https://marrow-demo.vercel.app"
-                data-demo-link
-                data-ev="ev_77c1"
-                data-span="686-706"
+              <a class="cite" href="#start" data-demo-link data-ev="ev_77c1" data-span="686-706"
                 >ev_77c1 [686–706]</a
               >
             </div>
@@ -496,7 +485,7 @@
           Marrow keeps it current, raising a question when code drifts from a decided goal instead
           of letting the two quietly diverge. Check mode returns the receipt, the catch event and
           the accept or dismiss command.
-          <a href="https://marrow-demo.vercel.app" data-demo-link>The same brain, live →</a>
+          <a href="#start" data-demo-link>Run the same loop →</a>
         </p>
       </section>
 
@@ -508,75 +497,96 @@
           is Postgres.
         </p>
         <div class="sheet intake-sheet">
-          <p class="sheet-head">INTAKE · <span class="id">@marrowhq/cli</span></p>
+          <p class="sheet-head">INTAKE · <span class="id">from source</span></p>
           <div class="intake-lines">
-            <button type="button" class="intake-line" data-copy="npx @marrowhq/cli demo">
+            <button
+              type="button"
+              class="intake-line"
+              data-copy="git clone https://github.com/ElxMaj/marrow && cd marrow"
+            >
+              <span class="c"
+                ># Get the current source while npm catches up
+                <span class="copied-note" aria-hidden="true">Copied</span></span
+              >
+              <span class="cmd"
+                ><span class="p">git</span> clone https://github.com/ElxMaj/marrow &&
+                <span class="p">cd</span> marrow</span
+              >
+            </button>
+            <button type="button" class="intake-line" data-copy="pnpm install && pnpm db:up">
+              <span class="c"
+                ># Install and start the one Postgres
+                <span class="copied-note" aria-hidden="true">Copied</span></span
+              >
+              <span class="cmd"><span class="p">pnpm</span> install && pnpm db:up</span>
+            </button>
+            <button type="button" class="intake-line" data-copy="pnpm marrow demo">
               <span class="c"
                 ># The hero slice end to end, no key
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
-              <span class="cmd"><span class="p">npx</span> @marrowhq/cli demo</span>
+              <span class="cmd"><span class="p">pnpm</span> marrow demo</span>
             </button>
-            <button type="button" class="intake-line" data-copy="npx @marrowhq/cli web">
+            <button type="button" class="intake-line" data-copy="pnpm marrow web">
               <span class="c"
                 ># Open the question-loop UI in your browser
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
-              <span class="cmd"><span class="p">npx</span> @marrowhq/cli web</span>
+              <span class="cmd"><span class="p">pnpm</span> marrow web</span>
             </button>
             <button
               type="button"
               class="intake-line"
-              data-copy='marrow loop "build the delete flow"'
+              data-copy='pnpm marrow loop "build the delete flow"'
             >
               <span class="c"
                 ># Give the agent its task brief before it codes
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
-              <span class="cmd"><span class="p">marrow</span> loop "build the delete flow"</span>
+              <span class="cmd"
+                ><span class="p">pnpm</span> marrow loop "build the delete flow"</span
+              >
             </button>
             <button
               type="button"
               class="intake-line"
-              data-copy='marrow loop "build the delete flow" --check --unstaged'
+              data-copy='pnpm marrow loop "build the delete flow" --check --unstaged'
             >
               <span class="c"
                 ># Check the diff before review
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
               <span class="cmd"
-                ><span class="p">marrow</span> loop "build the delete flow" --check --unstaged</span
+                ><span class="p">pnpm</span> marrow loop "build the delete flow" --check
+                --unstaged</span
               >
             </button>
-            <button type="button" class="intake-line" data-copy="marrow truth">
+            <button type="button" class="intake-line" data-copy="pnpm marrow truth">
               <span class="c"
                 ># Keep the source of truth current
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
-              <span class="cmd"><span class="p">marrow</span> truth</span>
+              <span class="cmd"><span class="p">pnpm</span> marrow truth</span>
             </button>
-            <button
-              type="button"
-              class="intake-line"
-              data-copy="npx @marrowhq/cli ingest ./meetings"
-            >
+            <button type="button" class="intake-line" data-copy="pnpm marrow ingest ./meetings">
               <span class="c"
                 ># Ingest the meetings you already export (.md .txt .vtt .srt); distillation uses
                 your model key <span class="copied-note" aria-hidden="true">Copied</span></span
               >
-              <span class="cmd"><span class="p">npx</span> @marrowhq/cli ingest ./meetings</span>
+              <span class="cmd"><span class="p">pnpm</span> marrow ingest ./meetings</span>
             </button>
             <button
               type="button"
               class="intake-line"
-              data-copy="claude mcp add marrow -- npx -y @marrowhq/mcp-server"
+              data-copy="claude mcp add marrow -- pnpm --dir /ABSOLUTE/PATH/TO/marrow exec tsx packages/mcp-server/src/main.ts"
             >
               <span class="c"
                 ># Point Claude Code at the brain over MCP
                 <span class="copied-note" aria-hidden="true">Copied</span></span
               >
               <span class="cmd"
-                ><span class="p">claude</span> mcp add marrow -- npx -y @marrowhq/mcp-server</span
+                ><span class="p">claude</span> mcp add marrow -- pnpm --dir /ABSOLUTE/PATH/TO/marrow
+                exec tsx packages/mcp-server/src/main.ts</span
               >
             </button>
           </div>
@@ -589,8 +599,8 @@
           </div>
           <div class="intake-actions">
             <a class="btn btn-primary" href="https://github.com/ElxMaj/marrow">Star on GitHub</a>
-            <a class="btn btn-ghost" href="https://www.npmjs.com/package/@marrowhq/cli"
-              >@marrowhq/cli</a
+            <a class="btn btn-ghost" href="https://github.com/ElxMaj/marrow#try-it-in-60-seconds"
+              >Run from source</a
             >
           </div>
         </div>
@@ -734,7 +744,7 @@
       </span>
       <nav class="footer-nav" aria-label="Footer">
         <a href="https://github.com/ElxMaj/marrow">GitHub</a>
-        <a href="https://www.npmjs.com/package/@marrowhq/cli">npm</a>
+        <a href="https://github.com/ElxMaj/marrow#try-it-in-60-seconds">Run</a>
         <a href="https://github.com/ElxMaj/marrow#readme">Docs</a>
         <a href="#support">Support</a>
       </nav>
@@ -742,9 +752,9 @@
 
     <script>
       // ------------------------------------------------------------------
-      // one constant, every demo link. swap here when the alias changes.
+      // one constant, every demo link. point at a hosted demo when that alias exists.
       // ------------------------------------------------------------------
-      var DEMO_URL = "https://marrow-demo.vercel.app";
+      var DEMO_URL = "#start";
       document.querySelectorAll("[data-demo-link]").forEach(function (a) {
         a.setAttribute("href", DEMO_URL);
       });
