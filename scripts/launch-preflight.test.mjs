@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildPreflightReport,
+  evaluateDemoDocsTruth,
   evaluateHeroSourcePath,
   formatTextReport,
 } from "./launch-preflight.mjs";
@@ -80,5 +81,25 @@ test("hero source path points evaluators at the full setup instead of a half-com
   assert.deepEqual(evaluateHeroSourcePath(newHero), {
     ok: true,
     detail: "hero points at source setup",
+  });
+});
+
+test("demo docs describe the current bundled hero slice", () => {
+  const staleDocs = {
+    readme: "demo shows the magic-link decision decided with provenance",
+    demoDoc:
+      "pnpm demo ingests packages/core/fixtures/demo/pfc-gdynia.md and prints magic links, no shared passwords",
+  };
+  const currentDocs = {
+    readme: "demo shows the soft-delete decision decided with provenance",
+    demoDoc:
+      "pnpm demo ingests packages/core/fixtures/demo/design-partner.md and prints soft delete, 30 days, then purge",
+  };
+
+  assert.equal(evaluateDemoDocsTruth(staleDocs).ok, false);
+  assert.match(evaluateDemoDocsTruth(staleDocs).detail, /stale magic-link demo copy/);
+  assert.deepEqual(evaluateDemoDocsTruth(currentDocs), {
+    ok: true,
+    detail: "demo docs match the bundled soft-delete slice",
   });
 });

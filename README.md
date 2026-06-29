@@ -106,7 +106,7 @@ pnpm marrow demo     # the hero slice end to end, no API key
 pnpm marrow web      # open the console in your browser
 ```
 
-`demo` ingests an interview, distills it, answers the loop, and shows the magic-link decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. The only thing you provide is Postgres. See [docs/console.md](./docs/console.md).
+`demo` ingests an interview, distills it, answers the loop, and shows the soft-delete decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. The only thing you provide is Postgres. See [docs/console.md](./docs/console.md).
 
 After npm latest matches this repo, the same commands work as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`. Until then, the source path above is the honest first run.
 
