@@ -92,7 +92,7 @@ It fails safe. The cursor does not advance, so the next run retries the same win
 
 ## Is there a UI?
 
-Yes, a console. `npx @marrowhq/cli web` opens it locally. It has sections to browse the brain, settle open questions, watch the automatic data flow from connectors, and read cost, latency and traces. See [console.md](./console.md).
+Yes, a console. From a clone, `pnpm marrow web` opens it locally. It has sections to browse the brain, settle open questions, watch the automatic data flow from connectors, and read cost, latency and traces. See [console.md](./console.md).
 
 ## What is the stack?
 

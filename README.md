@@ -98,12 +98,17 @@ For the copy-paste team ritual, see [docs/agent-workflow.md](./docs/agent-workfl
 ## Try it in 60 seconds
 
 ```bash
+git clone https://github.com/ElxMaj/marrow && cd marrow
+pnpm install
+pnpm db:up
 export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow   # any Postgres+pgvector
-npx @marrowhq/cli demo     # the hero slice end to end, no API key
-npx @marrowhq/cli web      # open the console in your browser
+pnpm marrow demo     # the hero slice end to end, no API key
+pnpm marrow web      # open the console in your browser
 ```
 
 `demo` ingests an interview, distills it, answers the loop, and shows the magic-link decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. The only thing you provide is Postgres. See [docs/console.md](./docs/console.md).
+
+After npm latest matches this repo, the same commands work as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`. Until then, the source path above is the honest first run.
 
 ## Prerequisites
 
@@ -117,14 +122,12 @@ npx @marrowhq/cli web      # open the console in your browser
 Marrow reads meeting transcripts in the formats your tools already export: WebVTT (Zoom, Meet, Teams), SRT, JSON (Otter, Granola, generic), or plain text/markdown, and normalizes each to clean speaker-attributed evidence before distilling.
 
 ```bash
-npx @marrowhq/cli ingest ./meetings            # a whole folder, any mix of formats
-cat zoom-call.vtt | npx @marrowhq/cli ingest - # or pipe one in
-npx @marrowhq/cli ingest --audio standup.m4a   # a voice memo (needs a transcription provider)
-npx @marrowhq/cli questions                    # what the room left open
-npx @marrowhq/cli ask "passwordless auth"      # task-scoped, semantic
+pnpm marrow ingest ./meetings            # a whole folder, any mix of formats
+cat zoom-call.vtt | pnpm marrow ingest - # or pipe one in
+pnpm marrow ingest --audio standup.m4a   # a voice memo (needs a transcription provider)
+pnpm marrow questions                    # what the room left open
+pnpm marrow ask "passwordless auth"      # task-scoped, semantic
 ```
-
-(From a clone, run any command with `pnpm marrow ...` instead of `npx @marrowhq/cli ...`.)
 
 ## The automatic data flow
 
@@ -134,8 +137,8 @@ Slack, GitHub, Linear, Notion, Figma, Zoom, Intercom, and the new ones: Gmail (e
 
 ```bash
 export MARROW_SECRET_KEY=...                       # encrypts connector secrets at rest
-npx @marrowhq/cli connectors add slack --name slack --secret xoxb-...
-npx @marrowhq/cli sync                              # pull every enabled connector now
+pnpm marrow connectors add slack --name slack --secret xoxb-...
+pnpm marrow sync                              # pull every enabled connector now
 ```
 
 A connector only ever appends evidence, never mutates it. The sync engine is the durable layer: each run pulls only what is new (a cursor per connector), never double-ingests (dedup on append-only evidence), advances the cursor only on success, and records a run. Because every run is idempotent it is safe to retry and safe to schedule, the Temporal-shaped property on one Postgres, no external workflow engine. Secrets are encrypted at rest (AES-256-GCM) before they touch the database. See [docs/connectors.md](./docs/connectors.md).
@@ -147,8 +150,8 @@ Every distill, search, drift scan and connector sync is recorded as one run on t
 The cost is an estimate, never a bill, and an unknown model shows as unknown, not a fabricated zero. This is the Langfuse-shaped value with no second system to run, the one-Postgres rule again.
 
 ```bash
-npx @marrowhq/cli runs       # the recent trace
-npx @marrowhq/cli observe    # the aggregate metrics
+pnpm marrow runs       # the recent trace
+pnpm marrow observe    # the aggregate metrics
 ```
 
 See [docs/observability.md](./docs/observability.md).
@@ -161,8 +164,10 @@ Marrow serves task-scoped context to your coding agent over MCP. Point Claude Co
 claude mcp add marrow \
   -e DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow \
   -e MARROW_API_KEY=sk-ant-... \
-  -- npx -y @marrowhq/mcp-server
+  -- pnpm --dir /ABSOLUTE/PATH/TO/marrow exec tsx packages/mcp-server/src/main.ts
 ```
+
+After `@marrowhq/mcp-server` latest matches this repo, replace the final command with `-- npx -y @marrowhq/mcp-server`.
 
 Embeddings are zero-config (a local model runs in-process), so no embedding endpoint is required; set `MARROW_EMBEDDING_BASE_URL` only if you want to use your own. For Codex or any other MCP host, use the same command and env as an `mcpServers` entry.
 

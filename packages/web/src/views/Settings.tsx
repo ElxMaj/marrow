@@ -7,8 +7,8 @@ export const MARROW_DOCS_URL = "https://github.com/ElxMaj/marrow#readme";
 const MCP_SNIPPET = `{
   "mcpServers": {
     "marrow": {
-      "command": "npx",
-      "args": ["-y", "@marrowhq/mcp-server"],
+      "command": "pnpm",
+      "args": ["--dir", "/ABSOLUTE/PATH/TO/marrow", "exec", "tsx", "packages/mcp-server/src/main.ts"],
       "env": { "DATABASE_URL": "postgres://…/marrow" }
     }
   }

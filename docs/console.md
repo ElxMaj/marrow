@@ -5,11 +5,11 @@ The console is the screen for the brain. The CLI and the MCP server are for the 
 ## How to open it
 
 ```bash
-npx @marrowhq/cli web        # local, opens the console in your browser
-npx @marrowhq/cli web --open # and launches the browser for you
+pnpm marrow web        # local, opens the console in your browser
+pnpm marrow web --open # and launches the browser for you
 ```
 
-From a clone, `pnpm marrow web`. It stays up until you stop it with Ctrl+C. The only thing it needs is your Postgres.
+It stays up until you stop it with Ctrl+C. The only thing it needs is your Postgres. After npm latest matches this repo, the same command works as `npx @marrowhq/cli web`.
 
 ## The sections
 
