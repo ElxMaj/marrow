@@ -22,6 +22,7 @@ The preflight checks the current public launch surface:
 - local npm auth works
 - public npm package versions match the repo package versions
 - the live Vercel alias is up and has the approved hero copy
+- the hero CTA points at the full source setup while npm latest is stale
 - demo links point at a reachable destination
 - live `npx @marrowhq/*` commands point at packages that match the repo versions
 - `marrowhq.com` is visible to the Vercel account
