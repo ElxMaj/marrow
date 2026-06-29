@@ -14,6 +14,7 @@ The preflight checks the current public launch surface:
 - local npm auth works
 - public npm package versions match the repo package versions
 - the live Vercel alias is up and has the approved hero copy
+- live `npx @marrowhq/*` commands point at packages that match the repo versions
 - `marrowhq.com` is visible to the Vercel account
 - `marrowhq.com` and `www.marrowhq.com` point at Vercel
 - `benchmark/report.json` is nonzero and public benchmark wording stays synthetic
