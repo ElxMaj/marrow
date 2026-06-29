@@ -5,6 +5,7 @@ import {
   buildPreflightReport,
   evaluateDemoDocsTruth,
   evaluateHeroSourcePath,
+  evaluateSourceSetupPath,
   formatTextReport,
 } from "./launch-preflight.mjs";
 
@@ -101,5 +102,31 @@ test("demo docs describe the current bundled hero slice", () => {
   assert.deepEqual(evaluateDemoDocsTruth(currentDocs), {
     ok: true,
     detail: "demo docs match the bundled soft-delete slice",
+  });
+});
+
+test("source setup includes migrations before the demo command", () => {
+  const staleSetup = {
+    readme: `pnpm install
+pnpm db:up
+pnpm marrow demo`,
+    landing: `<button data-copy="pnpm install && pnpm db:up"></button>
+<button data-copy="pnpm marrow demo"></button>`,
+  };
+  const currentSetup = {
+    readme: `pnpm install
+pnpm db:up
+pnpm db:migrate
+pnpm marrow demo`,
+    landing: `<button data-copy="pnpm install && pnpm db:up"></button>
+<button data-copy="pnpm db:migrate"></button>
+<button data-copy="pnpm marrow demo"></button>`,
+  };
+
+  assert.equal(evaluateSourceSetupPath(staleSetup).ok, false);
+  assert.match(evaluateSourceSetupPath(staleSetup).detail, /missing pnpm db:migrate/);
+  assert.deepEqual(evaluateSourceSetupPath(currentSetup), {
+    ok: true,
+    detail: "source setup migrates before demo",
   });
 });
