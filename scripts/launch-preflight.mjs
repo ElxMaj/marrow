@@ -151,6 +151,13 @@ function nextActionFor(check, context = defaultReportContext) {
       command: `vercel domains inspect ${context.apexDomain}`,
     };
   }
+  if (check.name === "apex content") {
+    return {
+      ...base,
+      action: `Point ${context.apexDomain} at the Vercel launch project and verify the homepage serves the agent launch page, not an old app.`,
+      command: `curl -fsSL https://${context.apexDomain} | rg "product context layer|Your coding agent"`,
+    };
+  }
   if (check.name === "Namecheap domain verification") {
     return {
       ...base,
@@ -355,6 +362,20 @@ export function evaluateLiveSourceSetupPath(html) {
   const problem = evaluateSourceSetupText(html, "live landing");
   if (problem) return { ok: false, detail: problem };
   return { ok: true, detail: "live landing source setup migrates before demo" };
+}
+
+export function evaluateApexProductTruth(html) {
+  if (
+    html.includes("Marrow · The product context layer for coding agents") &&
+    html.includes("Your coding agent has never been in the room.")
+  ) {
+    return { ok: true, detail: "apex serves the agent launch page" };
+  }
+
+  return {
+    ok: false,
+    detail: "apex does not serve the agent launch page",
+  };
 }
 
 async function run(command, args, options = {}) {
@@ -623,6 +644,19 @@ async function checkDomain() {
     }
   } catch (error) {
     fail(`${wwwDomain} DNS`, error.message);
+  }
+
+  try {
+    const apex = await fetchText(`https://${apexDomain}/`);
+    if (!apex.response.ok) {
+      fail("apex content", `HTTP ${apex.response.status}`);
+      return;
+    }
+    const productTruth = evaluateApexProductTruth(apex.text);
+    if (productTruth.ok) pass("apex content", productTruth.detail);
+    else fail("apex content", productTruth.detail);
+  } catch (error) {
+    fail("apex content", error instanceof Error ? error.message : String(error));
   }
 }
 

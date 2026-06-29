@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildPreflightReport,
+  evaluateApexProductTruth,
   evaluateDemoDocsTruth,
   evaluateHeroSourcePath,
   evaluateLiveSourceSetupPath,
@@ -200,5 +201,22 @@ test("live source setup proves the deployed landing includes migrations", () => 
   assert.deepEqual(evaluateLiveSourceSetupPath(currentLive), {
     ok: true,
     detail: "live landing source setup migrates before demo",
+  });
+});
+
+test("apex content proves the public domain serves the agent launch page", () => {
+  const oldShopifyApp = `<title>Marrow · Tu beneficio real en Shopify</title>
+<p>Cuánto ganas de verdad en tu tienda Shopify.</p>`;
+  const launchPage = `<title>Marrow · The product context layer for coding agents</title>
+<h1>Your coding agent has never been in the room.</h1>`;
+
+  assert.equal(evaluateApexProductTruth(oldShopifyApp).ok, false);
+  assert.match(
+    evaluateApexProductTruth(oldShopifyApp).detail,
+    /does not serve the agent launch page/,
+  );
+  assert.deepEqual(evaluateApexProductTruth(launchPage), {
+    ok: true,
+    detail: "apex serves the agent launch page",
   });
 });
