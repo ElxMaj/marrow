@@ -388,10 +388,10 @@ section {
     max-width: 1280px;
   }
   .cover-title {
-    max-width: 16ch;
+    max-width: 20ch;
   }
   .standfirst {
-    max-width: 70ch;
+    max-width: 78ch;
   }
 }
 .cover-actions {
