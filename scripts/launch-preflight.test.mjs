@@ -7,6 +7,7 @@ import {
   evaluateHeroSourcePath,
   evaluateLiveSourceSetupPath,
   evaluateSourceSetupPath,
+  formatMarkdownReport,
   formatTextReport,
 } from "./launch-preflight.mjs";
 
@@ -49,6 +50,35 @@ test("preflight report is stable JSON for automation", () => {
   assert.equal(parsed.summary.warned, 1);
   assert.equal(parsed.nextActions.length, 1);
   assert.equal(parsed.nextActions[0].severity, "warn");
+});
+
+test("preflight report can render a paste-ready markdown handoff", () => {
+  const report = buildPreflightReport(
+    [
+      {
+        status: "fail",
+        name: "NPM_TOKEN secret",
+        detail: "missing repo secret, tagged releases cannot publish",
+      },
+      { status: "pass", name: "demo link", detail: "points at on-page #start" },
+    ],
+    {
+      githubRepo: "ElxMaj/marrow",
+      siteUrl: "https://marrow-six.vercel.app/",
+      apexDomain: "marrowhq.com",
+      wwwDomain: "www.marrowhq.com",
+    },
+  );
+
+  const markdown = formatMarkdownReport(report);
+  assert.match(markdown, /^## Marrow launch preflight/m);
+  assert.match(markdown, /\*\*Summary:\*\* 1 failed, 0 warned, 1 passed, 2 total\./);
+  assert.match(markdown, /### Open launch actions/);
+  assert.match(markdown, /- \*\*NPM_TOKEN secret\*\* \(fail\): missing repo secret/);
+  assert.match(markdown, /Action: Create an npm Automation token/);
+  assert.match(markdown, /```bash\ngh secret set NPM_TOKEN --repo ElxMaj\/marrow\n```/);
+  assert.match(markdown, /### Passed checks/);
+  assert.match(markdown, /- \*\*demo link\*\*: points at on-page #start/);
 });
 
 test("preflight next actions respect the checked repository context", () => {

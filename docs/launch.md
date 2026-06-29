@@ -12,6 +12,12 @@ Use JSON when a release checklist, issue comment, or automation needs the same d
 pnpm launch:preflight -- --json
 ```
 
+Use Markdown when a launch owner needs a paste-ready handoff:
+
+```bash
+pnpm launch:preflight -- --markdown
+```
+
 Internal mirrors and forks can retarget the same checks with `MARROW_PREFLIGHT_REPO`, `MARROW_PREFLIGHT_SITE_URL`, `MARROW_PREFLIGHT_CANONICAL_URL`, `MARROW_PREFLIGHT_APEX_DOMAIN`, and `MARROW_PREFLIGHT_WWW_DOMAIN`.
 
 The preflight checks the current public launch surface:
