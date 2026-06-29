@@ -100,6 +100,13 @@ function nextActionFor(check, context = defaultReportContext) {
       command: 'rg -n "Run from source|cmd-chip|pnpm marrow demo" landing/index.html',
     };
   }
+  if (check.name === "source setup migration") {
+    return {
+      ...base,
+      action: "Add pnpm db:migrate to the source quickstart before the demo command.",
+      command: 'rg -n "pnpm db:up|pnpm db:migrate|pnpm marrow demo" README.md landing/index.html',
+    };
+  }
   if (check.name === "demo link") {
     return {
       ...base,
@@ -276,6 +283,32 @@ export function evaluateDemoDocsTruth({ readme, demoDoc }) {
     ok: false,
     detail: "demo docs do not prove the bundled soft-delete slice",
   };
+}
+
+export function evaluateSourceSetupPath({ readme, landing }) {
+  const order = (text, label) => {
+    const dbUp = text.indexOf("pnpm db:up");
+    const migrate = text.indexOf("pnpm db:migrate");
+    const demo = text.indexOf("pnpm marrow demo");
+    if (dbUp < 0) return `${label} missing pnpm db:up`;
+    if (migrate < 0) return `${label} missing pnpm db:migrate`;
+    if (demo < 0) return `${label} missing pnpm marrow demo`;
+    if (!(dbUp < migrate && migrate < demo)) {
+      return `${label} must run pnpm db:migrate after pnpm db:up and before pnpm marrow demo`;
+    }
+    return undefined;
+  };
+
+  const problems = [order(readme, "README"), order(landing, "landing")].filter(
+    (problem) => problem !== undefined,
+  );
+  if (problems.length > 0) {
+    return {
+      ok: false,
+      detail: problems.join("; "),
+    };
+  }
+  return { ok: true, detail: "source setup migrates before demo" };
 }
 
 async function run(command, args, options = {}) {
@@ -563,6 +596,11 @@ async function checkBenchmarkAndClaims() {
   const demoDocsTruth = evaluateDemoDocsTruth({ readme, demoDoc });
   if (demoDocsTruth.ok) pass("demo docs truth", demoDocsTruth.detail);
   else fail("demo docs truth", demoDocsTruth.detail);
+
+  const landing = await readFile(join(root, "landing/index.html"), "utf8");
+  const sourceSetup = evaluateSourceSetupPath({ readme, landing });
+  if (sourceSetup.ok) pass("source setup migration", sourceSetup.detail);
+  else fail("source setup migration", sourceSetup.detail);
 }
 
 async function checkPackageFiles() {

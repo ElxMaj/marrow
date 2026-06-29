@@ -29,6 +29,7 @@ The preflight checks the current public launch surface:
 - `marrowhq.com` and `www.marrowhq.com` point at Vercel
 - `benchmark/report.json` is nonzero and public benchmark wording stays synthetic
 - README/demo docs describe the bundled demo slice, not stale launch copy
+- source quickstarts run migrations before the first demo command
 - packed package allowlists exclude built test files
 
 When anything fails or warns, the report ends with concrete next actions. Those actions are the launch handoff: fix the code-owned item, or give the owner the exact account, DNS, or npm step that remains.

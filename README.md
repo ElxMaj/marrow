@@ -101,6 +101,7 @@ For the copy-paste team ritual, see [docs/agent-workflow.md](./docs/agent-workfl
 git clone https://github.com/ElxMaj/marrow && cd marrow
 pnpm install
 pnpm db:up
+pnpm db:migrate
 export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow   # any Postgres+pgvector
 pnpm marrow demo     # the hero slice end to end, no API key
 pnpm marrow web      # open the console in your browser
