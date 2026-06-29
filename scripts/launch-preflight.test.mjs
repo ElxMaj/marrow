@@ -11,6 +11,7 @@ import {
   evaluateSourceSetupPath,
   formatMarkdownReport,
   formatTextReport,
+  summarizeGitHubCiRun,
 } from "./launch-preflight.mjs";
 
 test("preflight report includes concrete next actions for launch blockers", () => {
@@ -120,6 +121,55 @@ test("preflight next actions respect the checked repository context", () => {
   assert.equal(
     report.nextActions[0].command,
     "gh run list --repo ElxMaj/marrow-internal --branch main --workflow ci --limit 1",
+  );
+});
+
+test("preflight next action identifies GitHub empty-step failures", () => {
+  const report = buildPreflightReport(
+    [
+      {
+        status: "fail",
+        name: "GitHub CI",
+        detail: "latest main run 123456 failed before any job steps ran",
+      },
+    ],
+    {
+      githubRepo: "ElxMaj/marrow-internal",
+      siteUrl: "https://marrow-six.vercel.app/",
+      apexDomain: "marrowhq.com",
+      wwwDomain: "www.marrowhq.com",
+    },
+  );
+
+  assert.match(report.nextActions[0]?.action ?? "", /GitHub Actions account/);
+  assert.equal(
+    report.nextActions[0]?.command,
+    "gh run view 123456 --repo ElxMaj/marrow-internal --json jobs",
+  );
+});
+
+test("GitHub CI summary diagnoses empty job steps", () => {
+  assert.deepEqual(
+    summarizeGitHubCiRun(
+      {
+        status: "completed",
+        conclusion: "failure",
+        headSha: "abc123456789",
+        databaseId: 123456,
+      },
+      [
+        {
+          name: "check",
+          status: "completed",
+          conclusion: "failure",
+          steps: [],
+        },
+      ],
+    ),
+    {
+      status: "fail",
+      detail: "latest main run 123456 failed before any job steps ran",
+    },
   );
 });
 

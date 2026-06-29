@@ -44,6 +44,15 @@ function nextActionFor(check, context = defaultReportContext) {
   }
 
   if (check.name === "GitHub CI") {
+    const emptyStepRun = /latest main run (\d+) failed before any job steps ran/.exec(check.detail);
+    if (emptyStepRun) {
+      return {
+        ...base,
+        action:
+          "Fix the GitHub Actions account or runner failure that exits before any workflow steps run, then rerun main CI.",
+        command: `gh run view ${emptyStepRun[1]} --repo ${context.githubRepo} --json jobs`,
+      };
+    }
     return {
       ...base,
       action: "Fix or rerun the latest main CI before launch.",
@@ -399,6 +408,29 @@ async function readJson(path) {
   return JSON.parse(await readFile(join(root, path), "utf8"));
 }
 
+export function summarizeGitHubCiRun(latest, jobs = []) {
+  if (latest?.status === "completed" && latest.conclusion === "success") {
+    return { status: "pass", detail: `main is green at ${latest.headSha.slice(0, 7)}` };
+  }
+
+  const failedJobs = jobs.filter((job) => job.conclusion === "failure");
+  if (
+    latest?.databaseId &&
+    failedJobs.length > 0 &&
+    failedJobs.every((job) => Array.isArray(job.steps) && job.steps.length === 0)
+  ) {
+    return {
+      status: "fail",
+      detail: `latest main run ${latest.databaseId} failed before any job steps ran`,
+    };
+  }
+
+  return {
+    status: "fail",
+    detail: `latest main run is ${latest?.status ?? "missing"} / ${latest?.conclusion ?? "none"}`,
+  };
+}
+
 async function checkGitHub() {
   const runs = await run("gh", [
     "run",
@@ -412,20 +444,33 @@ async function checkGitHub() {
     "--limit",
     "1",
     "--json",
-    "status,conclusion,headSha",
+    "databaseId,status,conclusion,headSha",
   ]);
   if (!runs.ok) {
     fail("GitHub CI", `could not read latest main run: ${runs.stderr}`);
     return;
   }
   const [latest] = JSON.parse(runs.stdout);
-  if (latest?.status === "completed" && latest.conclusion === "success") {
-    pass("GitHub CI", `main is green at ${latest.headSha.slice(0, 7)}`);
+
+  let jobs = [];
+  if (latest?.status === "completed" && latest.conclusion !== "success" && latest.databaseId) {
+    const viewed = await run("gh", [
+      "run",
+      "view",
+      String(latest.databaseId),
+      "--repo",
+      githubRepo,
+      "--json",
+      "jobs",
+    ]);
+    if (viewed.ok) jobs = JSON.parse(viewed.stdout).jobs ?? [];
+  }
+
+  const summary = summarizeGitHubCiRun(latest, jobs);
+  if (summary.status === "pass") {
+    pass("GitHub CI", summary.detail);
   } else {
-    fail(
-      "GitHub CI",
-      `latest main run is ${latest?.status ?? "missing"} / ${latest?.conclusion ?? "none"}`,
-    );
+    fail("GitHub CI", summary.detail);
   }
 
   const secrets = await run("gh", ["secret", "list", "--repo", githubRepo]);
