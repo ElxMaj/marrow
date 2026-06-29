@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -219,4 +220,10 @@ test("apex content proves the public domain serves the agent launch page", () =>
     ok: true,
     detail: "apex serves the agent launch page",
   });
+});
+
+test("launch docs include the apex content guard", () => {
+  const launchDoc = readFileSync(new URL("../docs/launch.md", import.meta.url), "utf8");
+  assert.match(launchDoc, /public apex serves the agent launch page/);
+  assert.match(launchDoc, /curl -fsSL https:\/\/marrowhq\.com/);
 });

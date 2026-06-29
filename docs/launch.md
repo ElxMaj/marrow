@@ -33,6 +33,7 @@ The preflight checks the current public launch surface:
 - live `npx @marrowhq/*` commands point at packages that match the repo versions
 - `marrowhq.com` is visible to the Vercel account
 - `marrowhq.com` and `www.marrowhq.com` point at Vercel
+- the public apex serves the agent launch page, not an old app
 - `benchmark/report.json` is nonzero and public benchmark wording stays synthetic
 - README/demo docs describe the bundled demo slice, not stale launch copy
 - source quickstarts run migrations before the first demo command
@@ -78,6 +79,14 @@ www.marrowhq.com  CNAME  cname.vercel-dns.com
 ```
 
 Remove parked A records such as `198.54.117.242`. The launch is not on the real domain until DNS and Vercel ownership both pass.
+
+After DNS changes, verify the public apex serves the agent launch page:
+
+```bash
+curl -fsSL https://marrowhq.com | rg "product context layer|Your coding agent"
+```
+
+If that command does not match, the domain is still serving the wrong product or an old deployment.
 
 ## Release Flow
 
