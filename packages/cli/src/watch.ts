@@ -35,6 +35,7 @@ interface WatchOptions {
   distill: boolean;
   debounceMs: number;
   onEvent?: (message: string) => void;
+  onIngested?: (path: string) => void;
 }
 
 function fileKey(path: string, mtime: number): string {
@@ -121,8 +122,16 @@ export async function watchFolder(options: WatchOptions): Promise<FSWatcher> {
         }
       }
       log(`Ingested ${path}`);
+      options.onIngested?.(path);
     } catch (err) {
       log(`Failed to ingest ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const ingestUnseenFiles = async (): Promise<void> => {
+    for await (const path of walkFiles(folder)) {
+      if (await core.hasEvidenceSource(path)) continue;
+      await ingestFile(path);
     }
   };
 
@@ -131,10 +140,7 @@ export async function watchFolder(options: WatchOptions): Promise<FSWatcher> {
   // source is already in the store, so a restart does not re-ingest the whole
   // folder as duplicate evidence (F-CLI-014). live edits below still re-ingest
   // via the mtime-keyed `processed` set.
-  for await (const path of walkFiles(folder)) {
-    if (await core.hasEvidenceSource(path)) continue;
-    await ingestFile(path);
-  }
+  await ingestUnseenFiles();
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const pending = new Set<string>();
@@ -167,6 +173,16 @@ export async function watchFolder(options: WatchOptions): Promise<FSWatcher> {
   }
 
   watcher.on("error", (err) => log(`Watch error: ${err.message}`));
+
+  const catchUpTimer = setTimeout(() => {
+    void ingestUnseenFiles();
+  }, debounceMs);
+  const close = watcher.close.bind(watcher);
+  watcher.close = () => {
+    if (timer) clearTimeout(timer);
+    clearTimeout(catchUpTimer);
+    return close();
+  };
 
   return watcher;
 }
