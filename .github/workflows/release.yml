@@ -16,6 +16,14 @@ jobs:
           cache: pnpm
           registry-url: "https://registry.npmjs.org"
       - run: pnpm install --frozen-lockfile
+      - name: Verify npm token
+        run: test -n "$NODE_AUTH_TOKEN"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm smoke:packed
       - run: pnpm -r build
       - run: pnpm changeset publish
         env:

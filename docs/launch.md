@@ -9,6 +9,7 @@ pnpm launch:preflight
 The preflight checks the current public launch surface:
 
 - latest GitHub main CI is green
+- the release workflow reruns token, typecheck, lint, tests, packed smoke, and build before npm publish
 - `NPM_TOKEN` exists for release publishing
 - local npm auth works
 - public npm package versions match the repo package versions

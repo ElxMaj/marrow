@@ -85,6 +85,39 @@ async function checkGitHub() {
   }
 }
 
+async function checkReleaseWorkflow() {
+  const workflow = await readFile(join(root, ".github/workflows/release.yml"), "utf8");
+  const publishIndex = workflow.indexOf("pnpm changeset publish");
+  if (publishIndex === -1) {
+    fail("release workflow", "missing pnpm changeset publish");
+    return;
+  }
+
+  const requiredBeforePublish = [
+    ["npm token check", 'test -n "$NODE_AUTH_TOKEN"'],
+    ["typecheck", "pnpm typecheck"],
+    ["lint", "pnpm lint"],
+    ["test", "pnpm test"],
+    ["packed smoke", "pnpm smoke:packed"],
+    ["build", "pnpm -r build"],
+  ];
+  const missing = requiredBeforePublish
+    .filter(([, command]) => {
+      const index = workflow.indexOf(command);
+      return index === -1 || index > publishIndex;
+    })
+    .map(([name]) => name);
+
+  if (missing.length === 0) {
+    pass(
+      "release workflow",
+      "checks token, typecheck, lint, tests, packed smoke, and build before publish",
+    );
+  } else {
+    fail("release workflow", `missing before publish: ${missing.join(", ")}`);
+  }
+}
+
 async function checkNpm() {
   const whoami = await run("npm", ["whoami"]);
   if (whoami.ok) pass("npm auth", `logged in as ${whoami.stdout}`);
@@ -245,6 +278,7 @@ async function checkPackageFiles() {
 
 async function main() {
   await checkGitHub();
+  await checkReleaseWorkflow();
   await checkNpm();
   await checkLiveSite();
   await checkDomain();
