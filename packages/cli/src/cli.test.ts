@@ -747,13 +747,68 @@ describe("cli", () => {
     const bare = new Marrow(store);
     const dir = mkdtempSync(join(tmpdir(), "marrow-watch-"));
     const { watchFolder } = await import("./watch.js");
-    const watcher = await watchFolder({ folder: dir, core: bare, distill: false, debounceMs: 100 });
     const file = join(dir, "drop.md");
-    writeFileSync(file, "watched folder decision note");
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let markIngested: (path: string) => void = () => {};
+    const ingested = new Promise<string>((resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error("watch did not ingest the dropped file")), 1500);
+      markIngested = (path) => {
+        if (timeout) clearTimeout(timeout);
+        resolve(path);
+      };
+    });
 
-    // wait for the debounced ingest to flush.
-    await new Promise((r) => setTimeout(r, 400));
-    watcher.close();
+    const watcher = await watchFolder({
+      folder: dir,
+      core: bare,
+      distill: false,
+      debounceMs: 100,
+      onIngested: markIngested,
+    });
+    try {
+      writeFileSync(file, "watched folder decision note");
+      await expect(ingested).resolves.toBe(file);
+    } finally {
+      watcher.close();
+      if (timeout) clearTimeout(timeout);
+    }
+
+    const stored = (await bare.searchEvidence("watched folder")).find((e) => e.source === file);
+    expect(stored).toBeDefined();
+  });
+
+  it("watch reports ingestion of an already-present new file", async () => {
+    const bare = new Marrow(store);
+    const dir = mkdtempSync(join(tmpdir(), "marrow-watch-catchup-"));
+    const { watchFolder } = await import("./watch.js");
+    const file = join(dir, "drop.md");
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let markIngested: (path: string) => void = () => {};
+    const ingested = new Promise<string>((resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("startup sweep did not ingest the dropped file")),
+        1500,
+      );
+      markIngested = (path) => {
+        if (timeout) clearTimeout(timeout);
+        resolve(path);
+      };
+    });
+
+    writeFileSync(file, "watched folder decision note");
+    const watcher = await watchFolder({
+      folder: dir,
+      core: bare,
+      distill: false,
+      debounceMs: 100,
+      onIngested: markIngested,
+    });
+    try {
+      await expect(ingested).resolves.toBe(file);
+    } finally {
+      watcher.close();
+      if (timeout) clearTimeout(timeout);
+    }
 
     const stored = (await bare.searchEvidence("watched folder")).find((e) => e.source === file);
     expect(stored).toBeDefined();
