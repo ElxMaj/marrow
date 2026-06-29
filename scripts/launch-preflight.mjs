@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const checks = [];
+const npmPackageProblems = new Map();
 
 function pass(name, detail) {
   checks.push({ status: "pass", name, detail });
@@ -135,11 +136,16 @@ async function checkNpm() {
     const viewed = await run("npm", ["view", pkg.name, "version", "--json"]);
     if (!viewed.ok) {
       fail(`npm latest ${pkg.name}`, viewed.stderr);
+      npmPackageProblems.set(pkg.name, "could not read npm latest");
       continue;
     }
     const latest = JSON.parse(viewed.stdout);
     if (latest === pkg.version) pass(`npm latest ${pkg.name}`, latest);
-    else fail(`npm latest ${pkg.name}`, `registry has ${latest}, repo has ${pkg.version}`);
+    else {
+      const detail = `registry has ${latest}, repo has ${pkg.version}`;
+      fail(`npm latest ${pkg.name}`, detail);
+      npmPackageProblems.set(pkg.name, detail);
+    }
   }
 }
 
@@ -164,6 +170,29 @@ async function checkLiveSite() {
     pass("hero capitalization", "None is capitalized in the hero copy");
   } else {
     fail("hero capitalization", "hero copy does not contain the approved sentence");
+  }
+
+  const advertisedNpxPackages = [
+    ["@marrowhq/cli", "npx @marrowhq/cli"],
+    ["@marrowhq/mcp-server", "npx -y @marrowhq/mcp-server"],
+  ].filter(([, marker]) => html.includes(marker));
+  const staleAdvertisedPackages = advertisedNpxPackages.filter(([name]) =>
+    npmPackageProblems.has(name),
+  );
+  if (advertisedNpxPackages.length === 0) {
+    pass("live npx freshness", "no @marrowhq npx commands advertised");
+  } else if (staleAdvertisedPackages.length === 0) {
+    pass(
+      "live npx freshness",
+      `${advertisedNpxPackages.map(([name]) => name).join(", ")} match repo versions`,
+    );
+  } else {
+    fail(
+      "live npx freshness",
+      staleAdvertisedPackages
+        .map(([name]) => `${name} (${npmPackageProblems.get(name)})`)
+        .join("; "),
+    );
   }
 
   const sitemap = await fetch("https://marrow-six.vercel.app/sitemap.xml");
