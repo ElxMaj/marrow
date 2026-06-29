@@ -1489,6 +1489,11 @@ html.reduce [data-stage="decided"] .title-text {
     grid-column: 2;
   }
 }
+@media (max-width: 420px) {
+  .masthead-nav a[href="#support"] {
+    display: none;
+  }
+}
 
 /* ---- reduced motion: meaning stays, movement goes ---- */
 @media (prefers-reduced-motion: reduce) {
