@@ -248,6 +248,37 @@ export function formatTextReport(report) {
   return lines.join("\n");
 }
 
+export function formatMarkdownReport(report) {
+  const lines = [
+    "## Marrow launch preflight",
+    "",
+    `**Summary:** ${report.summary.failed} failed, ${report.summary.warned} warned, ${report.summary.passed} passed, ${report.summary.total} total.`,
+  ];
+
+  if (report.nextActions.length > 0) {
+    lines.push("", "### Open launch actions");
+    for (const action of report.nextActions) {
+      const check = report.checks.find((item) => item.name === action.check);
+      const detail = check?.detail ? `: ${check.detail}` : "";
+      lines.push(`- **${action.check}** (${action.severity})${detail}`);
+      lines.push(`  Action: ${action.action}`);
+      if (action.command) {
+        lines.push("", "```bash", action.command, "```");
+      }
+    }
+  }
+
+  const passed = report.checks.filter((check) => check.status === "pass");
+  if (passed.length > 0) {
+    lines.push("", "### Passed checks");
+    for (const check of passed) {
+      lines.push(`- **${check.name}**${check.detail ? `: ${check.detail}` : ""}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export function evaluateHeroSourcePath(html) {
   const cover = html.match(/<section class="cover">([\s\S]*?)<\/section>/)?.[1];
   if (!cover) return { ok: false, detail: "missing cover section" };
@@ -652,6 +683,8 @@ async function main() {
   const report = buildPreflightReport(checks);
   if (process.argv.includes("--json")) {
     console.log(JSON.stringify(report, null, 2));
+  } else if (process.argv.includes("--markdown")) {
+    console.log(formatMarkdownReport(report));
   } else {
     console.log(formatTextReport(report));
   }
