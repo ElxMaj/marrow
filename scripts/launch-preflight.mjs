@@ -3,11 +3,17 @@ import { execFile } from "node:child_process";
 import { resolve4, resolveCname, resolveNs, resolveSoa } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const githubRepo = process.env.MARROW_PREFLIGHT_REPO ?? "ElxMaj/marrow";
+const siteUrl = process.env.MARROW_PREFLIGHT_SITE_URL ?? "https://marrow-six.vercel.app/";
+const canonicalUrl = process.env.MARROW_PREFLIGHT_CANONICAL_URL ?? "https://marrow-six.vercel.app/";
+const apexDomain = process.env.MARROW_PREFLIGHT_APEX_DOMAIN ?? "marrowhq.com";
+const wwwDomain = process.env.MARROW_PREFLIGHT_WWW_DOMAIN ?? "www.marrowhq.com";
+const defaultReportContext = { githubRepo, siteUrl, apexDomain, wwwDomain };
 
 const checks = [];
 const npmPackageProblems = new Map();
@@ -22,6 +28,193 @@ function warn(name, detail) {
 
 function fail(name, detail) {
   checks.push({ status: "fail", name, detail });
+}
+
+function nextActionFor(check, context = defaultReportContext) {
+  if (check.status === "pass") return undefined;
+
+  const base = { check: check.name, severity: check.status };
+  const npmLatest = /^npm latest (.+)$/.exec(check.name);
+  if (npmLatest) {
+    return {
+      ...base,
+      action: `Publish ${npmLatest[1]} at the repo package version, then verify npm latest matches.`,
+      command: `npm view ${npmLatest[1]} version`,
+    };
+  }
+
+  if (check.name === "GitHub CI") {
+    return {
+      ...base,
+      action: "Fix or rerun the latest main CI before launch.",
+      command: `gh run list --repo ${context.githubRepo} --branch main --workflow ci --limit 1`,
+    };
+  }
+  if (check.name === "NPM_TOKEN secret") {
+    return {
+      ...base,
+      action:
+        "Create an npm Automation token with publish rights for the marrowhq org, then add it to the public repo secrets.",
+      command: `gh secret set NPM_TOKEN --repo ${context.githubRepo}`,
+    };
+  }
+  if (check.name === "npm auth") {
+    return {
+      ...base,
+      action:
+        "Authenticate npm locally if publishing from this machine, or rely on the release workflow after NPM_TOKEN is set.",
+      command: "npm login",
+    };
+  }
+  if (check.name === "release workflow") {
+    return {
+      ...base,
+      action: "Restore the release workflow guardrails before any tag can publish packages.",
+      command: "sed -n '1,220p' .github/workflows/release.yml",
+    };
+  }
+  if (check.name === "launch site") {
+    return {
+      ...base,
+      action: "Repair the Vercel production alias before linking users to the launch site.",
+      command: `vercel inspect ${context.siteUrl}`,
+    };
+  }
+  if (check.name === "canonical URL") {
+    return {
+      ...base,
+      action: "Update landing metadata so the canonical URL matches the live launch alias.",
+    };
+  }
+  if (check.name === "hero capitalization") {
+    return {
+      ...base,
+      action: "Restore the approved hero sentence with capitalized sentence starts.",
+    };
+  }
+  if (check.name === "demo link") {
+    return {
+      ...base,
+      action: "Point DEMO_URL at a reachable hosted demo or an existing on-page section.",
+      command: 'rg -n "DEMO_URL|id=\\"start\\"" landing/index.html',
+    };
+  }
+  if (check.name === "live npx freshness") {
+    return {
+      ...base,
+      action:
+        "Keep live copy source-first until npm latest matches the repo, or publish the current packages.",
+      command: "pnpm launch:preflight",
+    };
+  }
+  if (check.name === "sitemap") {
+    return {
+      ...base,
+      action: "Restore the launch sitemap before public indexing or announcement traffic.",
+    };
+  }
+  if (check.name === "Vercel inspect") {
+    return {
+      ...base,
+      action:
+        "Confirm the deployment is Ready in Vercel; warnings here can be transient but should be checked before launch.",
+      command: `vercel inspect ${context.siteUrl}`,
+    };
+  }
+  if (check.name === "Vercel domain access") {
+    return {
+      ...base,
+      action: `Add ${context.apexDomain} to the Vercel project after the registrar contact-verification hold clears.`,
+      command: `vercel domains inspect ${context.apexDomain}`,
+    };
+  }
+  if (check.name === "Namecheap domain verification") {
+    return {
+      ...base,
+      action: `Verify the ${context.apexDomain} domain contact details in Namecheap, then wait for failed WHOIS nameservers to clear.`,
+    };
+  }
+  if (check.name === `${context.apexDomain} DNS` || check.name === "marrowhq.com DNS") {
+    return {
+      ...base,
+      action: "Set the apex A record to Vercel and remove parked Namecheap A records.",
+      command: `${context.apexDomain} A 76.76.21.21`,
+    };
+  }
+  if (check.name === `${context.wwwDomain} DNS` || check.name === "www.marrowhq.com DNS") {
+    return {
+      ...base,
+      action: "Set the www CNAME to Vercel.",
+      command: `${context.wwwDomain} CNAME cname.vercel-dns.com`,
+    };
+  }
+  if (check.name === "benchmark report") {
+    return {
+      ...base,
+      action: "Regenerate benchmark/report.json with nonzero, honest synthetic measurements.",
+      command: "pnpm benchmark",
+    };
+  }
+  if (check.name === "benchmark claims") {
+    return {
+      ...base,
+      action:
+        "Keep public benchmark wording synthetic and remove any partner-data implication unless real partner data exists.",
+    };
+  }
+  if (check.name.startsWith("package files ")) {
+    return {
+      ...base,
+      action: "Keep package allowlists excluding built tests before publishing.",
+    };
+  }
+
+  return {
+    ...base,
+    action: "Resolve this launch preflight finding before public launch.",
+  };
+}
+
+export function buildPreflightReport(sourceChecks, context = defaultReportContext) {
+  const failed = sourceChecks.filter((check) => check.status === "fail");
+  const warned = sourceChecks.filter((check) => check.status === "warn");
+  const passed = sourceChecks.filter((check) => check.status === "pass");
+  return {
+    summary: {
+      failed: failed.length,
+      warned: warned.length,
+      passed: passed.length,
+      total: sourceChecks.length,
+    },
+    checks: sourceChecks,
+    nextActions: sourceChecks
+      .map((check) => nextActionFor(check, context))
+      .filter((action) => action !== undefined),
+  };
+}
+
+export function formatTextReport(report) {
+  const lines = ["Marrow launch preflight"];
+  for (const check of report.checks) {
+    const label = check.status.toUpperCase().padEnd(4);
+    lines.push(`${label} ${check.name}${check.detail ? ` - ${check.detail}` : ""}`);
+  }
+
+  lines.push("");
+  lines.push(
+    `${report.summary.failed} failed, ${report.summary.warned} warned, ${report.summary.passed} passed`,
+  );
+
+  if (report.nextActions.length > 0) {
+    lines.push("");
+    lines.push("Next actions");
+    report.nextActions.forEach((action, index) => {
+      lines.push(`${index + 1}. ${action.check}: ${action.action}`);
+      if (action.command) lines.push(`   ${action.command}`);
+    });
+  }
+
+  return lines.join("\n");
 }
 
 async function run(command, args, options = {}) {
@@ -50,7 +243,7 @@ async function checkGitHub() {
     "run",
     "list",
     "--repo",
-    "ElxMaj/marrow",
+    githubRepo,
     "--branch",
     "main",
     "--workflow",
@@ -74,7 +267,7 @@ async function checkGitHub() {
     );
   }
 
-  const secrets = await run("gh", ["secret", "list", "--repo", "ElxMaj/marrow"]);
+  const secrets = await run("gh", ["secret", "list", "--repo", githubRepo]);
   if (!secrets.ok) {
     fail("NPM_TOKEN secret", `could not list repo secrets: ${secrets.stderr}`);
     return;
@@ -156,13 +349,13 @@ async function fetchText(url) {
 }
 
 async function checkLiveSite() {
-  const home = await fetchText("https://marrow-six.vercel.app/");
+  const home = await fetchText(siteUrl);
   if (home.response.ok) pass("launch site", `HTTP ${home.response.status}`);
   else fail("launch site", `HTTP ${home.response.status}`);
 
   const html = home.text;
-  if (html.includes('rel="canonical" href="https://marrow-six.vercel.app/"')) {
-    pass("canonical URL", "points at the live Vercel alias");
+  if (html.includes(`rel="canonical" href="${canonicalUrl}"`)) {
+    pass("canonical URL", `points at ${canonicalUrl}`);
   } else {
     fail("canonical URL", "missing or stale canonical URL");
   }
@@ -214,11 +407,11 @@ async function checkLiveSite() {
     );
   }
 
-  const sitemap = await fetch("https://marrow-six.vercel.app/sitemap.xml");
+  const sitemap = await fetch(new URL("/sitemap.xml", siteUrl));
   if (sitemap.ok) pass("sitemap", `HTTP ${sitemap.status}`);
   else fail("sitemap", `HTTP ${sitemap.status}`);
 
-  const inspect = await run("vercel", ["inspect", "https://marrow-six.vercel.app"]);
+  const inspect = await run("vercel", ["inspect", siteUrl]);
   const inspectText = `${inspect.stdout}\n${inspect.stderr}`;
   if (!inspect.ok) warn("Vercel inspect", `could not inspect deployment: ${inspect.stderr}`);
   else if (inspectText.includes("Ready")) {
@@ -229,24 +422,21 @@ async function checkLiveSite() {
 }
 
 async function checkDomain() {
-  const vercelDomain = await run("vercel", ["domains", "inspect", "marrowhq.com"]);
+  const vercelDomain = await run("vercel", ["domains", "inspect", apexDomain]);
   if (vercelDomain.ok) {
-    pass("Vercel domain access", "marrowhq.com is visible to the Vercel account");
+    pass("Vercel domain access", `${apexDomain} is visible to the Vercel account`);
   } else {
     const reason =
       vercelDomain.stderr
         .split(/\r?\n/)
         .map((line) => line.trim())
         .find((line) => line.startsWith("Error:"))
-        ?.replace(/^Error:\s*/, "") ?? "could not inspect marrowhq.com";
-    fail("Vercel domain access", `marrowhq.com is not visible to Vercel: ${reason}`);
+        ?.replace(/^Error:\s*/, "") ?? `could not inspect ${apexDomain}`;
+    fail("Vercel domain access", `${apexDomain} is not visible to Vercel: ${reason}`);
   }
 
   try {
-    const [nameservers, soa] = await Promise.all([
-      resolveNs("marrowhq.com"),
-      resolveSoa("marrowhq.com"),
-    ]);
+    const [nameservers, soa] = await Promise.all([resolveNs(apexDomain), resolveSoa(apexDomain)]);
     const verificationRecords = [...nameservers, soa.nsname, soa.hostmaster].map((name) =>
       name.toLowerCase(),
     );
@@ -259,7 +449,7 @@ async function checkDomain() {
     ) {
       fail(
         "Namecheap domain verification",
-        "marrowhq.com is on Namecheap's failed WHOIS/contact-verification nameservers; verify domain contact details before changing Vercel DNS",
+        `${apexDomain} is on Namecheap's failed WHOIS/contact-verification nameservers; verify domain contact details before changing Vercel DNS`,
       );
     }
   } catch {
@@ -267,25 +457,25 @@ async function checkDomain() {
   }
 
   try {
-    const addresses = await resolve4("marrowhq.com");
+    const addresses = await resolve4(apexDomain);
     if (addresses.includes("76.76.21.21")) {
-      pass("marrowhq.com DNS", "apex points at Vercel");
+      pass(`${apexDomain} DNS`, "apex points at Vercel");
     } else {
-      fail("marrowhq.com DNS", `apex A records are ${addresses.join(", ") || "missing"}`);
+      fail(`${apexDomain} DNS`, `apex A records are ${addresses.join(", ") || "missing"}`);
     }
   } catch (error) {
-    fail("marrowhq.com DNS", error.message);
+    fail(`${apexDomain} DNS`, error.message);
   }
 
   try {
-    const cnames = await resolveCname("www.marrowhq.com");
+    const cnames = await resolveCname(wwwDomain);
     if (cnames.some((name) => name.replace(/\.$/, "") === "cname.vercel-dns.com")) {
-      pass("www.marrowhq.com DNS", "www points at Vercel");
+      pass(`${wwwDomain} DNS`, "www points at Vercel");
     } else {
-      fail("www.marrowhq.com DNS", `www CNAME records are ${cnames.join(", ") || "missing"}`);
+      fail(`${wwwDomain} DNS`, `www CNAME records are ${cnames.join(", ") || "missing"}`);
     }
   } catch (error) {
-    fail("www.marrowhq.com DNS", error.message);
+    fail(`${wwwDomain} DNS`, error.message);
   }
 }
 
@@ -333,22 +523,18 @@ async function main() {
   await checkBenchmarkAndClaims();
   await checkPackageFiles();
 
-  console.log("Marrow launch preflight");
-  for (const check of checks) {
-    const label = check.status.toUpperCase().padEnd(4);
-    console.log(`${label} ${check.name}${check.detail ? ` - ${check.detail}` : ""}`);
+  const report = buildPreflightReport(checks);
+  if (process.argv.includes("--json")) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatTextReport(report));
   }
-
-  const failed = checks.filter((check) => check.status === "fail");
-  const warned = checks.filter((check) => check.status === "warn");
-  console.log("");
-  console.log(
-    `${failed.length} failed, ${warned.length} warned, ${checks.length - failed.length - warned.length} passed`,
-  );
-  if (failed.length > 0) process.exit(1);
+  if (report.summary.failed > 0) process.exit(1);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

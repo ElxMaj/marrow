@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r --workspace-concurrency=1 test && node landing/check-ids.mjs",
+    "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/*.test.mjs && node landing/check-ids.mjs",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",

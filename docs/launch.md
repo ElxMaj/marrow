@@ -6,6 +6,14 @@ Run this before any public launch push, tag, or announcement:
 pnpm launch:preflight
 ```
 
+Use JSON when a release checklist, issue comment, or automation needs the same data:
+
+```bash
+pnpm launch:preflight -- --json
+```
+
+Internal mirrors and forks can retarget the same checks with `MARROW_PREFLIGHT_REPO`, `MARROW_PREFLIGHT_SITE_URL`, `MARROW_PREFLIGHT_CANONICAL_URL`, `MARROW_PREFLIGHT_APEX_DOMAIN`, and `MARROW_PREFLIGHT_WWW_DOMAIN`.
+
 The preflight checks the current public launch surface:
 
 - latest GitHub main CI is green
@@ -20,6 +28,8 @@ The preflight checks the current public launch surface:
 - `marrowhq.com` and `www.marrowhq.com` point at Vercel
 - `benchmark/report.json` is nonzero and public benchmark wording stays synthetic
 - packed package allowlists exclude built test files
+
+When anything fails or warns, the report ends with concrete next actions. Those actions are the launch handoff: fix the code-owned item, or give the owner the exact account, DNS, or npm step that remains.
 
 The human-facing adoption path lives in [Agent workflow](./agent-workflow.md). Update it whenever the CLI or MCP loop changes.
 
