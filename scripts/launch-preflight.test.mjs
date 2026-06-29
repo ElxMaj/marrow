@@ -52,6 +52,29 @@ test("preflight report is stable JSON for automation", () => {
   assert.equal(parsed.nextActions[0].severity, "warn");
 });
 
+test("domain handoff separates Vercel access from registrar holds", () => {
+  const report = buildPreflightReport([
+    {
+      status: "fail",
+      name: "Vercel domain access",
+      detail: "marrowhq.com is not visible to Vercel",
+    },
+    {
+      status: "fail",
+      name: "Namecheap domain verification",
+      detail: "marrowhq.com is on failed WHOIS nameservers",
+    },
+  ]);
+
+  const vercelAction = report.nextActions.find((action) => action.check === "Vercel domain access");
+  const holdAction = report.nextActions.find(
+    (action) => action.check === "Namecheap domain verification",
+  );
+  assert.match(vercelAction?.action ?? "", /Add marrowhq\.com to the Vercel project/);
+  assert.doesNotMatch(vercelAction?.action ?? "", /registrar|WHOIS|hold/i);
+  assert.match(holdAction?.action ?? "", /Verify the marrowhq\.com domain contact details/);
+});
+
 test("preflight report can render a paste-ready markdown handoff", () => {
   const report = buildPreflightReport(
     [

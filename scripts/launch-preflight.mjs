@@ -147,7 +147,7 @@ function nextActionFor(check, context = defaultReportContext) {
   if (check.name === "Vercel domain access") {
     return {
       ...base,
-      action: `Add ${context.apexDomain} to the Vercel project after the registrar contact-verification hold clears.`,
+      action: `Add ${context.apexDomain} to the Vercel project that serves ${context.siteUrl}, then rerun domain inspection.`,
       command: `vercel domains inspect ${context.apexDomain}`,
     };
   }
