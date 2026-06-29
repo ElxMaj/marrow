@@ -170,6 +170,14 @@ function nextActionFor(check, context = defaultReportContext) {
         "Keep public benchmark wording synthetic and remove any partner-data implication unless real partner data exists.",
     };
   }
+  if (check.name === "demo docs truth") {
+    return {
+      ...base,
+      action: "Update README.md and docs/demo.md so the documented demo matches the bundled slice.",
+      command:
+        'rg -n "magic-link decision|pfc-gdynia|front-desk|soft-delete|design-partner" README.md docs/demo.md',
+    };
+  }
   if (check.name.startsWith("package files ")) {
     return {
       ...base,
@@ -240,6 +248,33 @@ export function evaluateHeroSourcePath(html) {
   return {
     ok: false,
     detail: "hero does not point at the source setup",
+  };
+}
+
+export function evaluateDemoDocsTruth({ readme, demoDoc }) {
+  const stale = [];
+  if (/magic-link decision/i.test(readme)) stale.push("README says magic-link decision");
+  if (/pfc-gdynia|front-desk|magic links, no shared passwords/i.test(demoDoc)) {
+    stale.push("docs/demo.md says old magic-link slice");
+  }
+  if (stale.length > 0) {
+    return {
+      ok: false,
+      detail: `stale magic-link demo copy: ${stale.join("; ")}`,
+    };
+  }
+
+  if (
+    /soft-delete decision/i.test(readme) &&
+    demoDoc.includes("packages/core/fixtures/demo/design-partner.md") &&
+    /soft delete, 30 days, then purge/i.test(demoDoc)
+  ) {
+    return { ok: true, detail: "demo docs match the bundled soft-delete slice" };
+  }
+
+  return {
+    ok: false,
+    detail: "demo docs do not prove the bundled soft-delete slice",
   };
 }
 
@@ -523,6 +558,11 @@ async function checkBenchmarkAndClaims() {
   } else {
     fail("benchmark claims", "synthetic or partner-data wording is missing");
   }
+
+  const demoDoc = await readFile(join(root, "docs/demo.md"), "utf8");
+  const demoDocsTruth = evaluateDemoDocsTruth({ readme, demoDoc });
+  if (demoDocsTruth.ok) pass("demo docs truth", demoDocsTruth.detail);
+  else fail("demo docs truth", demoDocsTruth.detail);
 }
 
 async function checkPackageFiles() {
