@@ -5,6 +5,7 @@ import {
   buildPreflightReport,
   evaluateDemoDocsTruth,
   evaluateHeroSourcePath,
+  evaluateLiveSourceSetupPath,
   evaluateSourceSetupPath,
   formatTextReport,
 } from "./launch-preflight.mjs";
@@ -128,5 +129,23 @@ pnpm marrow demo`,
   assert.deepEqual(evaluateSourceSetupPath(currentSetup), {
     ok: true,
     detail: "source setup migrates before demo",
+  });
+});
+
+test("live source setup proves the deployed landing includes migrations", () => {
+  const staleLive = `<button data-copy="pnpm install && pnpm db:up"></button>
+<button data-copy="pnpm marrow demo"></button>`;
+  const currentLive = `<button data-copy="pnpm install && pnpm db:up"></button>
+<button data-copy="pnpm db:migrate"></button>
+<button data-copy="pnpm marrow demo"></button>`;
+
+  assert.equal(evaluateLiveSourceSetupPath(staleLive).ok, false);
+  assert.match(
+    evaluateLiveSourceSetupPath(staleLive).detail,
+    /live landing missing pnpm db:migrate/,
+  );
+  assert.deepEqual(evaluateLiveSourceSetupPath(currentLive), {
+    ok: true,
+    detail: "live landing source setup migrates before demo",
   });
 });

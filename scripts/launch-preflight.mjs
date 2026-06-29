@@ -107,6 +107,14 @@ function nextActionFor(check, context = defaultReportContext) {
       command: 'rg -n "pnpm db:up|pnpm db:migrate|pnpm marrow demo" README.md landing/index.html',
     };
   }
+  if (check.name === "live source setup migration") {
+    return {
+      ...base,
+      action:
+        "Redeploy the launch site after adding pnpm db:migrate to the source quickstart before the demo command.",
+      command: `curl -fsSL ${context.siteUrl} | rg "pnpm db:up|pnpm db:migrate|pnpm marrow demo"`,
+    };
+  }
   if (check.name === "demo link") {
     return {
       ...base,
@@ -285,23 +293,24 @@ export function evaluateDemoDocsTruth({ readme, demoDoc }) {
   };
 }
 
-export function evaluateSourceSetupPath({ readme, landing }) {
-  const order = (text, label) => {
-    const dbUp = text.indexOf("pnpm db:up");
-    const migrate = text.indexOf("pnpm db:migrate");
-    const demo = text.indexOf("pnpm marrow demo");
-    if (dbUp < 0) return `${label} missing pnpm db:up`;
-    if (migrate < 0) return `${label} missing pnpm db:migrate`;
-    if (demo < 0) return `${label} missing pnpm marrow demo`;
-    if (!(dbUp < migrate && migrate < demo)) {
-      return `${label} must run pnpm db:migrate after pnpm db:up and before pnpm marrow demo`;
-    }
-    return undefined;
-  };
+function evaluateSourceSetupText(text, label) {
+  const dbUp = text.indexOf("pnpm db:up");
+  const migrate = text.indexOf("pnpm db:migrate");
+  const demo = text.indexOf("pnpm marrow demo");
+  if (dbUp < 0) return `${label} missing pnpm db:up`;
+  if (migrate < 0) return `${label} missing pnpm db:migrate`;
+  if (demo < 0) return `${label} missing pnpm marrow demo`;
+  if (!(dbUp < migrate && migrate < demo)) {
+    return `${label} must run pnpm db:migrate after pnpm db:up and before pnpm marrow demo`;
+  }
+  return undefined;
+}
 
-  const problems = [order(readme, "README"), order(landing, "landing")].filter(
-    (problem) => problem !== undefined,
-  );
+export function evaluateSourceSetupPath({ readme, landing }) {
+  const problems = [
+    evaluateSourceSetupText(readme, "README"),
+    evaluateSourceSetupText(landing, "landing"),
+  ].filter((problem) => problem !== undefined);
   if (problems.length > 0) {
     return {
       ok: false,
@@ -309,6 +318,12 @@ export function evaluateSourceSetupPath({ readme, landing }) {
     };
   }
   return { ok: true, detail: "source setup migrates before demo" };
+}
+
+export function evaluateLiveSourceSetupPath(html) {
+  const problem = evaluateSourceSetupText(html, "live landing");
+  if (problem) return { ok: false, detail: problem };
+  return { ok: true, detail: "live landing source setup migrates before demo" };
 }
 
 async function run(command, args, options = {}) {
@@ -461,6 +476,10 @@ async function checkLiveSite() {
   const heroSourcePath = evaluateHeroSourcePath(html);
   if (heroSourcePath.ok) pass("hero source path", heroSourcePath.detail);
   else fail("hero source path", heroSourcePath.detail);
+
+  const liveSourceSetup = evaluateLiveSourceSetupPath(html);
+  if (liveSourceSetup.ok) pass("live source setup migration", liveSourceSetup.detail);
+  else fail("live source setup migration", liveSourceSetup.detail);
 
   const demoUrlMatch = html.match(/var DEMO_URL = "([^"]+)"/);
   const demoUrl = demoUrlMatch?.[1];
