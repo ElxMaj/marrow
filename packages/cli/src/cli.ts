@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
  * Load the bundled benchmark corpus. It lives in the package's own benchmark/
  * dir (shipped via files:["dist","benchmark"]) and resolves relative to this
  * module, which sits one level under the package root in both src (dev) and
- * dist (published) — so the same join works in both.
+ * dist (published), so the same join works in both.
  */
 export function loadBenchmarkCorpus(): import("@marrowhq/core").SeedDoc[] {
   return JSON.parse(
@@ -203,7 +203,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export const HELP = `Marrow — The product context layer for coding agents
+export const HELP = `Marrow: the product context layer for coding agents
 
 Usage: marrow <command> [args] [--json]
 
@@ -451,7 +451,7 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
         return { ingested: [await distillEvidence(core, id, source, distill)] };
       }
 
-      // a file, a whole directory (swept recursively), or stdin — any format.
+      // a file, a whole directory (swept recursively), or stdin, any format.
       const target = positional(rest);
       if (target !== undefined && target !== "-") {
         const files = collectTranscriptFiles(target);
@@ -755,7 +755,7 @@ function formatIngestSummary(s: Record<string, unknown>): string {
   }
   const nodes = asNodes(s.nodes);
   if (nodes.length === 0)
-    return `${head}\n  Distilled — no new nodes yet (the room may not have decided anything).`;
+    return `${head}\n  Distilled, no new nodes yet (the room may not have decided anything).`;
   return `${head}\n  Distilled ${nodes.length} node(s):\n${nodes.map(formatNode).join("\n")}`;
 }
 
@@ -1038,7 +1038,7 @@ export function formatResult(result: unknown): string {
     if (Array.isArray(r[key])) {
       const nodes = asNodes(r[key]);
       if (nodes.length === 0) {
-        return `(No ${key}) — if the brain is empty, run \`marrow add <file>\` to ingest the room.`;
+        return `(No ${key}). If the brain is empty, run \`marrow add <file>\` to ingest the room.`;
       }
       return nodes.map(formatNode).join("\n");
     }
@@ -1048,7 +1048,7 @@ export function formatResult(result: unknown): string {
   if (Array.isArray(r.connectors)) {
     const cs = r.connectors as ConnectorSummary[];
     if (cs.length === 0) {
-      return "(No connectors configured) — try `marrow connectors add <kind> --name <n> --secret <s>`.";
+      return "(No connectors configured). Try `marrow connectors add <kind> --name <n> --secret <s>`.";
     }
     return cs.map(formatConnector).join("\n");
   }
@@ -1082,7 +1082,7 @@ export function formatResult(result: unknown): string {
   // runs: the observability trace.
   if (Array.isArray(r.runs)) {
     const runs = r.runs as RunRecord[];
-    if (runs.length === 0) return "(No runs yet) — distill, search, or sync to record some.";
+    if (runs.length === 0) return "(No runs yet). Distill, search, or sync to record some.";
     return runs.map(formatRun).join("\n");
   }
 

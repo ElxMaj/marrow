@@ -15,7 +15,7 @@ import { runWebCommand } from "./web-command.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** `marrow demo`: the hero slice end to end with NO API key — a scripted model
+/** `marrow demo`: the hero slice end to end with NO API key, a scripted model
  *  plus a deterministic in-process embedding, against the bundled interview. The
  *  60 second proof on a fresh install. Needs only Postgres (Marrow's one infra). */
 async function runDemoCommand(): Promise<void> {
@@ -40,7 +40,7 @@ async function runDemoCommand(): Promise<void> {
     console.log(
       [
         "",
-        "— Marrow demo: the room, distilled —",
+        "Marrow demo: the room, distilled",
         "",
         "1. Ingested an interview and distilled it (no API key: a scripted model",
         "   plus a local in-process embedding did the work)",
