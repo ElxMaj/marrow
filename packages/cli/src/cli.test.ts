@@ -304,6 +304,23 @@ describe("cli", () => {
     expect(formatResult(out)).toMatch(/Distilled \d+ node/);
   });
 
+  it("add honors --no-distill, storing evidence without distilling", async () => {
+    // core has a model configured, so distillation is possible; the flag must
+    // still suppress it instead of being silently dropped.
+    const file = join(tmpdir(), "marrow-cli-add-nodistill.md");
+    writeFileSync(file, transcript);
+    const out = (await runCommand(core, [
+      "add",
+      file,
+      "--source",
+      "standups/nd.md",
+      "--no-distill",
+    ])) as { evidenceId: string; distilled: boolean; nodes?: Distilled[] };
+    expect(out.evidenceId).toMatch(/^ev_/);
+    expect(out.distilled).toBe(false);
+    expect(out.nodes).toBeUndefined();
+  });
+
   it("add stores evidence and reports the next step when distillation is unconfigured", async () => {
     const bare = new Marrow(store); // no model or embedding
     const file = join(tmpdir(), "marrow-cli-add2.md");
