@@ -222,14 +222,14 @@ Read the room (task-scoped; every result carries status + provenance):
   trace <nodeId>              The exact source span(s) a fact came from
 
 Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
-  ingest <path> [--source S]  Ingest a transcript file, a whole folder, or stdin
+  ingest <path> [--source S]  Ingest a file, a whole folder, or stdin (distills by default)
   ingest --audio <file>       Transcribe a voice memo into evidence (needs a provider)
   ingest --image <file>       Read a whiteboard photo into evidence (needs a provider)
   watch <folder>              Continuously ingest new/changed files in a folder
   import <path>               Import markdown docs and decision logs as evidence
-  add [file] [--source S]     Ingest one transcript (file or stdin) and distill it
+  add [file] [--source S]     Shorthand to ingest one file or stdin (distills by default)
   distill <evidenceId>        Distill an evidence row already ingested
-  answer <questionId> --text "..."   The human promote-to-decided step
+  answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
   goal propose "<title>" --type product|user --evidence <id> [--start N --end N]
@@ -263,6 +263,9 @@ Connectors and automatic data flow (evidence is append only, only ever inserted)
 Observability (every distill, search, drift and sync is recorded):
   runs [--kind K] [--status ok|error] [--limit N]   Recent pipeline runs
   observe [--since ISO] [--until ISO]   Cost, latency, tokens, errors, by kind
+
+Serve a coding agent over MCP (the CLI and MCP server are equals):
+  See @marrowhq/mcp-server, e.g. claude mcp add marrow -- npx -y @marrowhq/mcp-server
 
 Global flags:
   --json                      Print raw JSON instead of formatted text
@@ -419,9 +422,11 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       const source = flagValue(rest, "--source") ?? file ?? "cli";
       const raw = file && file !== "-" ? readFileSync(file, "utf8") : await readStdin();
       // format-aware: a pasted Zoom/Otter/VTT transcript is normalized to clean
-      // speaker-attributed text before it becomes evidence. distill on ingest
-      // when a model is configured so `add` then `questions` shows something.
-      return ingestText(core, raw, source, file && file !== "-" ? file : undefined, true);
+      // speaker-attributed text before it becomes evidence. distills by default
+      // (so `add` then `questions` shows something); --no-distill stores only,
+      // the same as ingest, so the flag is never silently dropped.
+      const distill = !rest.includes("--no-distill");
+      return ingestText(core, raw, source, file && file !== "-" ? file : undefined, distill);
     }
 
     case "ingest": {
