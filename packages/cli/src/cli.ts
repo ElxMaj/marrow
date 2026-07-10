@@ -12,6 +12,7 @@ import {
   type Status,
 } from "@marrowhq/shared";
 
+import { colorStatus, dim } from "./color.js";
 import { watchFolder } from "./watch.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -693,7 +694,9 @@ function formatNode(node: Distilled): string {
   // a goal carries its type (product vs user) in the label; everything else
   // keeps the bare kind. status and provenance always show, per provenance-required.
   const label = node.kind === "goal" ? `goal (${node.goalType})` : node.kind;
-  return `  [${node.status}] ${label}: ${nodeTitle(node)}\n      ${c.value} ${c.source} · ${spans} source span${spans === 1 ? "" : "s"} · ${node.id}`;
+  // the status pops, the confidence/provenance metadata recedes into dim, so a
+  // list of decisions reads as decided-vs-open at a glance.
+  return `  [${colorStatus(node.status)}] ${label}: ${nodeTitle(node)}\n      ${dim(`${c.value} ${c.source} · ${spans} source span${spans === 1 ? "" : "s"} · ${node.id}`)}`;
 }
 
 function relTime(iso: string): string {
@@ -720,7 +723,7 @@ function formatRun(run: RunRecord): string {
   const toks = run.tokensIn !== undefined ? ` · ${run.tokensIn}+${run.tokensOut ?? 0} tok` : "";
   const model = run.model ? ` · ${run.model}` : "";
   const label = run.label ? ` ${run.label}` : "";
-  return `  [${run.status}] ${run.kind}${label} · ${Math.round(run.latencyMs)}ms${toks}${cost}${model}`;
+  return `  [${colorStatus(run.status)}] ${run.kind}${label} · ${Math.round(run.latencyMs)}ms${toks}${cost}${model}`;
 }
 
 function formatBriefNode(node: {
@@ -730,8 +733,8 @@ function formatBriefNode(node: {
   provenance?: { source: string; spanText: string }[];
 }): string {
   const span = node.provenance?.[0];
-  const source = span ? `\n      Source: ${span.source}\n      "${span.spanText}"` : "";
-  return `  [${node.status}] ${node.kind}: ${node.title}${source}`;
+  const source = span ? dim(`\n      Source: ${span.source}\n      "${span.spanText}"`) : "";
+  return `  [${colorStatus(node.status)}] ${node.kind}: ${node.title}${source}`;
 }
 
 /** Render one ingested source: where it came from, the detected format and
