@@ -282,7 +282,7 @@ describe("cli", () => {
       DATABASE_URL: databaseUrlWithMissingSchema(),
     });
     expect(missingSchema.status).toBe(3);
-    expect(missingSchema.stderr).toContain("Run `pnpm db:migrate`");
+    expect(missingSchema.stderr).toContain("Run `marrow migrate`");
 
     const generic = spawnMain(
       ["connectors", "add", "slack", "--name", "slack-generic", "--secret", "xoxb"],

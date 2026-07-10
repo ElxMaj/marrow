@@ -207,6 +207,7 @@ export const HELP = `Marrow — The product context layer for coding agents
 Usage: marrow <command> [args] [--json]
 
 Try it (no API key needed):
+  migrate                     Set up or update the schema on your Postgres
   demo                        Run the hero slice end to end and explain it
   web [--open] [--port N]     Open the question-loop UI in your browser
 

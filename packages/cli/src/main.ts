@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createMarrow } from "@marrowhq/core";
+import { createMarrow, migrate } from "@marrowhq/core";
 
 import { formatResult, HELP, runCommand } from "./cli.js";
 import { runWebCommand } from "./web-command.js";
@@ -20,6 +20,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 async function runDemoCommand(): Promise<void> {
   const core = await import("@marrowhq/core");
   const store = core.createStore(process.env.DATABASE_URL);
+  // The demo is the fresh-install proof, so it sets up its own schema first.
+  // migrate is idempotent, so re-running demo is safe and stays quiet when the
+  // schema is already current.
+  const migrated = await core.migrate(process.env.DATABASE_URL);
+  if (migrated.applied.length > 0) console.log("Set up the schema for the demo.");
   let brain: InstanceType<typeof core.Marrow> | undefined;
   try {
     brain = new core.Marrow(
@@ -58,6 +63,18 @@ async function runDemoCommand(): Promise<void> {
   }
 }
 
+/** `marrow migrate`: bring the schema up to date against DATABASE_URL. Gives a
+ *  published-bin user a self-contained setup path with no pnpm workspace. */
+async function runMigrateCommand(): Promise<void> {
+  const result = await migrate(process.env.DATABASE_URL);
+  if (result.applied.length === 0) {
+    console.log("Schema is up to date.");
+    return;
+  }
+  for (const name of result.applied) console.log(`Applied ${name}`);
+  console.log(`Schema ready: applied ${result.applied.length} migration(s).`);
+}
+
 function version(): string {
   try {
     const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as {
@@ -86,6 +103,7 @@ async function main(): Promise<void> {
   // own keyless core. both sit outside the standard run-one-command-and-close path.
   if (argv[0] === "web") return runWebCommand(argv);
   if (argv[0] === "demo") return runDemoCommand();
+  if (argv[0] === "migrate") return runMigrateCommand();
 
   const json = argv.includes("--json");
   const core = createMarrow();
@@ -138,12 +156,13 @@ main().catch((error: unknown) => {
     exitCode = 3;
     text = message || `Could not reach Postgres (${code ?? "connection refused"})`;
     hint =
-      "\nIs Postgres reachable? Start it (`pnpm db:up`) and run `pnpm db:migrate`, or set DATABASE_URL.";
+      "\nIs Postgres reachable? Start it, then run `marrow migrate` (or set DATABASE_URL). From a clone: `pnpm db:up && pnpm db:migrate`.";
   } else if (isSchema) {
     exitCode = 3;
-    hint = "\nThe schema is not migrated. Run `pnpm db:migrate`.";
+    hint = "\nThe schema is not migrated. Run `marrow migrate`.";
   } else if (/DATABASE_URL is not set/i.test(message)) {
     exitCode = 3;
+    hint = "\nPoint DATABASE_URL at your Postgres, then run `marrow migrate`.";
   } else if (
     /^usage:/i.test(message) ||
     /unknown command/i.test(message) ||
