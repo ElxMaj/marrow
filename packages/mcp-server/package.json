@@ -32,6 +32,18 @@
     "pg": "^8.13.0"
   },
   "license": "Apache-2.0",
+  "keywords": [
+    "marrow",
+    "mcp",
+    "model-context-protocol",
+    "coding-agents",
+    "product-context",
+    "provenance",
+    "claude"
+  ],
+  "homepage": "https://github.com/ElxMaj/marrow#readme",
+  "bugs": "https://github.com/ElxMaj/marrow/issues",
+  "author": "Marrow",
   "repository": {
     "type": "git",
     "url": "https://github.com/ElxMaj/marrow.git",
