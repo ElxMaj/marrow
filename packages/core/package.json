@@ -35,6 +35,20 @@
     "@types/pg": "^8.11.10"
   },
   "license": "Apache-2.0",
+  "keywords": [
+    "marrow",
+    "mcp",
+    "coding-agents",
+    "product-context",
+    "provenance",
+    "distillation",
+    "postgres",
+    "pgvector",
+    "claude"
+  ],
+  "homepage": "https://github.com/ElxMaj/marrow#readme",
+  "bugs": "https://github.com/ElxMaj/marrow/issues",
+  "author": "Marrow",
   "repository": {
     "type": "git",
     "url": "https://github.com/ElxMaj/marrow.git",

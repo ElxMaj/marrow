@@ -14,6 +14,16 @@
     "!dist/**/*.test.*"
   ],
   "license": "Apache-2.0",
+  "keywords": [
+    "marrow",
+    "product-context",
+    "provenance",
+    "question-loop",
+    "coding-agents"
+  ],
+  "homepage": "https://github.com/ElxMaj/marrow#readme",
+  "bugs": "https://github.com/ElxMaj/marrow/issues",
+  "author": "Marrow",
   "repository": {
     "type": "git",
     "url": "https://github.com/ElxMaj/marrow.git",

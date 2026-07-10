@@ -18,6 +18,19 @@
     "benchmark"
   ],
   "license": "Apache-2.0",
+  "keywords": [
+    "marrow",
+    "cli",
+    "mcp",
+    "coding-agents",
+    "product-context",
+    "provenance",
+    "postgres",
+    "pgvector"
+  ],
+  "homepage": "https://github.com/ElxMaj/marrow#readme",
+  "bugs": "https://github.com/ElxMaj/marrow/issues",
+  "author": "Marrow",
   "repository": {
     "type": "git",
     "url": "https://github.com/ElxMaj/marrow.git",
