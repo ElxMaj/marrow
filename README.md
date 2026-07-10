@@ -111,6 +111,8 @@ pnpm marrow web      # open the console in your browser
 
 `demo` sets up its own schema, so the `pnpm db:migrate` step above is only needed for `web` and the other commands. After npm latest matches this repo, the same commands work as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`, with `npx @marrowhq/cli migrate` to set up the schema for anything other than `demo`. Until then, the source path above is the honest first run.
 
+Run `marrow doctor` (or `pnpm marrow doctor`) any time to check the whole stack at a glance: DATABASE_URL, Postgres reachability, schema, and whether a model is configured for distillation. Each failing check prints what to run next.
+
 ## Prerequisites
 
 - Node >= 20.

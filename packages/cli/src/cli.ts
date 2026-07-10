@@ -209,6 +209,7 @@ Usage: marrow <command> [args] [--json]
 
 Try it (no API key needed):
   migrate                     Set up or update the schema on your Postgres
+  doctor [--json]             Check DATABASE_URL, Postgres, schema, and model
   demo                        Run the hero slice end to end and explain it
   web [--open] [--port N]     Open the question-loop UI in your browser
 
