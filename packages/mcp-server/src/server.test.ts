@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,25 @@ beforeEach(async () => {
 });
 
 describe("mcp server (over the SDK transport)", () => {
+  it("reports its real package version to the host, not a placeholder", () => {
+    // this is what shows in an MCP inspector / `/mcp`; a 0.0.0 there reads as unfinished.
+    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as {
+      version: string;
+    };
+    const advertised = client.getServerVersion();
+    expect(advertised?.name).toBe("marrow");
+    expect(advertised?.version).toBe(pkg.version);
+    expect(advertised?.version).not.toBe("0.0.0");
+  });
+
+  it("ships agent instructions covering decided-vs-open and propose-not-decide", () => {
+    // the SDK surfaces these to the model on connect; this is Marrow's whole point.
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).toMatch(/decided/i);
+    expect(instructions).toMatch(/propose/i);
+    expect(instructions).toMatch(/trace_to_source/);
+  });
+
   it("advertises exactly the task loop tools with input schemas", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual([
@@ -118,7 +137,7 @@ describe("mcp server (over the SDK transport)", () => {
     expect(res.content[0]?.text ?? "").toMatch(/unknown tool/i);
   });
 
-  it("returns isError when a handler throws (bad arguments), not a crash", async () => {
+  it("returns a named, actionable validation error (not a raw zod blob)", async () => {
     // propose_node requires provenance + a per-kind field; this trips zod.
     const res = (await client.callTool({
       name: "propose_node",
@@ -126,6 +145,9 @@ describe("mcp server (over the SDK transport)", () => {
     })) as CallResult;
     expect(res.isError).toBe(true);
     expect(res.content[0]?.type).toBe("text");
+    // one readable line naming the tool, not a JSON.stringify of zod issues.
+    expect(res.content[0]?.text ?? "").toContain("Invalid arguments for propose_node:");
+    expect(res.content[0]?.text ?? "").not.toMatch(/^\s*\[/);
   });
 
   // The code-time guardrail end to end: a coding agent that calls check_drift on
