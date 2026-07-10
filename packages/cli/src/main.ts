@@ -7,9 +7,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createMarrow, migrate } from "@marrowhq/core";
+import { createMarrow, doctor, migrate } from "@marrowhq/core";
 
 import { formatResult, HELP, runCommand } from "./cli.js";
+import { colorStatus, dim } from "./color.js";
 import { runWebCommand } from "./web-command.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,22 @@ async function runDemoCommand(): Promise<void> {
   }
 }
 
+/** `marrow doctor`: greenlight the whole first-run stack in one command. Prints a
+ *  colored checklist with a remedy per failing check, exits 3 on any error so an
+ *  agent loop can gate on it. `--json` for the machine contract. */
+async function runDoctorCommand(argv: string[]): Promise<void> {
+  const checks = await doctor(process.env.DATABASE_URL);
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify({ checks }, null, 2));
+  } else {
+    for (const c of checks) {
+      const remedy = c.remedy ? dim(`\n      ${c.remedy}`) : "";
+      console.log(`  [${colorStatus(c.status)}] ${c.name}: ${c.detail}${remedy}`);
+    }
+  }
+  if (checks.some((c) => c.status === "error")) process.exitCode = 3;
+}
+
 /** `marrow migrate`: bring the schema up to date against DATABASE_URL. Gives a
  *  published-bin user a self-contained setup path with no pnpm workspace. */
 async function runMigrateCommand(): Promise<void> {
@@ -104,6 +121,7 @@ async function main(): Promise<void> {
   if (argv[0] === "web") return runWebCommand(argv);
   if (argv[0] === "demo") return runDemoCommand();
   if (argv[0] === "migrate") return runMigrateCommand();
+  if (argv[0] === "doctor") return runDoctorCommand(argv);
 
   const json = argv.includes("--json");
   const core = createMarrow();

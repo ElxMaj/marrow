@@ -45,6 +45,7 @@ export {
 export { encryptSecret, decryptSecret } from "./crypto.js";
 export * from "./providers/index.js";
 export { migrate, type MigrateResult } from "./migrate.js";
+export { doctor, type DoctorCheck } from "./doctor.js";
 export { type Distilled } from "./distill.js";
 export { rankQuestions, questionImpact } from "./loop.js";
 export {
