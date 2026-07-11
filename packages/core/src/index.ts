@@ -26,6 +26,8 @@ export {
   type DecisionDraft,
   type QuestionDraft,
   type GoalDraft,
+  type EdgeDraft,
+  type Neighbor,
   type EmbeddingInput,
   type CatchEvent,
   type CatchMetrics,

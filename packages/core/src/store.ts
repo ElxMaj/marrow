@@ -8,6 +8,10 @@ import {
   ConnectorStateSchema,
   type Decision,
   DecisionSchema,
+  type Edge,
+  EdgeSchema,
+  type EdgeNodeKind,
+  type EdgeSource,
   type Entity,
   EntitySchema,
   type Evidence,
@@ -18,6 +22,7 @@ import {
   type ProvenanceSpan,
   type Question,
   QuestionSchema,
+  type Relation,
   type RunKind,
   type RunMetrics,
   type RunRecord,
@@ -68,6 +73,26 @@ export interface GoalDraft extends DistilledDraft {
   description?: string;
   goalType: "product" | "user";
   entityId?: string;
+}
+
+/** A directed edge to insert. The store stamps id and created_at. An edge never
+ *  carries a status: it is advisory graph structure, not a fact. */
+export interface EdgeDraft {
+  fromId: string;
+  fromKind: EdgeNodeKind;
+  toId: string;
+  toKind: EdgeNodeKind;
+  relation: Relation;
+  confidence: number;
+  source: EdgeSource;
+  evidenceId?: string | undefined;
+}
+
+/** A node reached by walking the graph from a seed, with its shortest hop depth. */
+export interface Neighbor {
+  id: string;
+  kind: EdgeNodeKind;
+  depth: number;
 }
 
 export interface EmbeddingInput {
@@ -269,6 +294,38 @@ function catchEventFromRow(row: CatchEventRow): CatchEvent {
  */
 export function escapeLike(input: string): string {
   return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+const EDGE_SELECT = `select id, from_id, from_kind, to_id, to_kind, relation, confidence, source, evidence_id, created_at from edge`;
+
+interface EdgeRow {
+  id: string | number;
+  from_id: string;
+  from_kind: string;
+  to_id: string;
+  to_kind: string;
+  relation: string;
+  confidence: string | number;
+  source: string;
+  evidence_id: string | null;
+  created_at: Date | string;
+}
+
+function edgeFromRow(row: EdgeRow): Edge {
+  // bigserial comes back as a string from pg; Number() it. Parse through the
+  // shared schema so the store only ever returns validated shared types.
+  return EdgeSchema.parse({
+    id: Number(row.id),
+    fromId: row.from_id,
+    fromKind: row.from_kind,
+    toId: row.to_id,
+    toKind: row.to_kind,
+    relation: row.relation,
+    confidence: Number(row.confidence),
+    source: row.source,
+    ...(row.evidence_id !== null ? { evidenceId: row.evidence_id } : {}),
+    createdAt: iso(row.created_at),
+  });
 }
 
 /**
@@ -1016,6 +1073,115 @@ export class Store {
       if (node) nodes.push(node);
     }
     return nodes;
+  }
+
+  // --- edges: the knowledge graph -------------------------------------------
+
+  /** Insert one directed edge. Idempotent on (from_id, to_id, relation) via the
+   *  unique index in 0013, so a re-distill or re-answer that recomputes the same
+   *  link never duplicates it. An edge never carries a status and never promotes
+   *  a node: it is advisory retrieval structure, not a fact. */
+  async insertEdge(draft: EdgeDraft): Promise<void> {
+    await this.pool.query(
+      `insert into edge (from_id, from_kind, to_id, to_kind, relation, confidence, source, evidence_id, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       on conflict (from_id, to_id, relation) do nothing`,
+      [
+        draft.fromId,
+        draft.fromKind,
+        draft.toId,
+        draft.toKind,
+        draft.relation,
+        draft.confidence,
+        draft.source,
+        draft.evidenceId ?? null,
+        new Date().toISOString(),
+      ],
+    );
+  }
+
+  /** Walk the graph outward from a set of seed nodes, both directions, bounded by
+   *  maxHops and a neighbor cap. Returns the reached nodes with their shortest hop
+   *  distance, seeds themselves excluded. This is the traversal that lets
+   *  prepare_task return a connected neighborhood instead of a flat search list,
+   *  and it is pure Postgres, so it works even when no embedding model is set. */
+  async neighbors(
+    seedIds: string[],
+    seedKinds: EdgeNodeKind[],
+    maxHops = 2,
+    cap = 50,
+  ): Promise<Neighbor[]> {
+    if (seedIds.length === 0) return [];
+    const res = await this.pool.query<{ id: string; kind: string; depth: string | number }>(
+      // A recursive CTE allows exactly one recursive arm, so walk both directions
+      // in a single arm: join any edge that touches a known node and step to the
+      // opposite endpoint. `union` (not `union all`) plus the depth bound make
+      // cycles terminate.
+      `with recursive nb(id, kind, depth) as (
+         select id, kind, 0 from unnest($1::text[], $2::text[]) as seeds(id, kind)
+         union
+         select
+           case when e.from_id = nb.id then e.to_id else e.from_id end,
+           case when e.from_id = nb.id then e.to_kind else e.from_kind end,
+           nb.depth + 1
+           from edge e
+           join nb on e.from_id = nb.id or e.to_id = nb.id
+          where nb.depth < $3
+       )
+       select id, kind, min(depth) as depth
+         from nb
+        where depth > 0 and id <> all($1::text[])
+        group by id, kind
+        order by min(depth), id
+        limit $4`,
+      [seedIds, seedKinds, maxHops, cap],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      kind: row.kind as EdgeNodeKind,
+      depth: Number(row.depth),
+    }));
+  }
+
+  /** Every edge touching a node, both directions, bounded. For the neighbor tool
+   *  and the console map. */
+  async edgesFor(nodeId: string, limit = 200): Promise<Edge[]> {
+    const res = await this.pool.query<EdgeRow>(
+      `${EDGE_SELECT} where from_id = $1 or to_id = $1 order by id limit $2`,
+      [nodeId, limit],
+    );
+    return res.rows.map(edgeFromRow);
+  }
+
+  /** How many edges touch a node. */
+  async degree(nodeId: string): Promise<number> {
+    const res = await this.pool.query<{ n: string | number }>(
+      "select count(*) as n from edge where from_id = $1 or to_id = $1",
+      [nodeId],
+    );
+    return Number(res.rows[0]?.n ?? 0);
+  }
+
+  /** Degree for a set of nodes at once, including 0 for a node with no edges, so
+   *  a front-door index can show how connected each node is without N queries. */
+  async degrees(ids: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (ids.length === 0) return out;
+    const res = await this.pool.query<{ node_id: string; degree: string | number }>(
+      `select n.id as node_id, count(e.id) as degree
+         from unnest($1::text[]) as n(id)
+         left join edge e on e.from_id = n.id or e.to_id = n.id
+        group by n.id`,
+      [ids],
+    );
+    for (const row of res.rows) out.set(row.node_id, Number(row.degree));
+    return out;
+  }
+
+  /** A bounded slice of the graph edges, lowest id first. For the console map. */
+  async listEdges(limit = 500): Promise<Edge[]> {
+    const res = await this.pool.query<EdgeRow>(`${EDGE_SELECT} order by id limit $1`, [limit]);
+    return res.rows.map(edgeFromRow);
   }
 
   // --- observability: append-only run trace ---------------------------------
