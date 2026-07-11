@@ -483,11 +483,13 @@ describe("synthesize (weekly digest)", () => {
       driftCatches: 0,
       staleDecided: 1,
       openQuestions: 4,
+      undistilled: 5,
     });
     expect(line).toContain("last 7 days");
     expect(line).toContain("3 facts changed");
     expect(line).toContain("2 contested facts");
     expect(line).toContain("4 open questions");
+    expect(line).toContain("5 evidence rows awaiting distillation");
   });
 
   it("synthesize reports what changed and what deserves attention, read-only", async () => {
@@ -510,8 +512,12 @@ describe("synthesize (weekly digest)", () => {
     });
     const before = (await core.getDecisions()).length;
 
+    // an appended-but-never-distilled row: the digest must admit the backlog.
+    await store.insertEvidence({ text: "raw, never distilled", source: "room/raw.md" });
+
     const report = await core.synthesize(7);
     expect(report.windowDays).toBe(7);
+    expect(report.undistilled).toBeGreaterThanOrEqual(1);
     expect(report.newlyDecided.length).toBeGreaterThanOrEqual(1);
     expect(report.contested.length).toBeGreaterThanOrEqual(1);
     expect(report.headline).toContain("last 7 days");

@@ -828,3 +828,65 @@ describe("Store edges (the knowledge graph)", () => {
     expect(await store.listIndex(1)).toHaveLength(1); // bounded
   });
 });
+
+describe("undistilled evidence backlog", () => {
+  it("reports evidence that neither provenance nor a successful distill run accounts for", async () => {
+    const ev = await store.insertEvidence({
+      text: "backlog raw session notes",
+      source: "session/backlog.md",
+    });
+    const { count, oldestCreatedAt } = await store.countUndistilledEvidence();
+    expect(count).toBeGreaterThanOrEqual(1);
+    expect(oldestCreatedAt).toBeDefined();
+    const pending = await store.undistilledEvidence(10_000);
+    expect(pending.map((row) => row.id)).toContain(ev.id);
+    // newest first: a fresh session drains before ancient leftovers.
+    expect(pending[0]?.id).toBe(ev.id);
+  });
+
+  it("a provenance span settles the row out of the backlog", async () => {
+    const ev = await store.insertEvidence({
+      text: "cited raw notes",
+      source: "session/cited.md",
+    });
+    await store.insertEntity({
+      name: "cited entity",
+      status: "open",
+      confidence: { value: 0.5, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 5 }],
+    });
+    const pending = await store.undistilledEvidence(10_000);
+    expect(pending.map((row) => row.id)).not.toContain(ev.id);
+  });
+
+  it("a successful distill run settles a distilled-to-zero-nodes row out of the backlog", async () => {
+    const ev = await store.insertEvidence({
+      text: "smalltalk with nothing durable in it",
+      source: "session/zero.md",
+    });
+    // the shape traced() records for a distill that created no nodes: without
+    // this run row the backlog could not tell "never distilled" apart from
+    // "distilled to zero nodes", since evidence itself is immutable.
+    await admin.query(
+      `insert into run (id, kind, status, label, latency_ms, metadata, created_at)
+       values ($1, 'distill', 'ok', $2, 1, $3::jsonb, now())`,
+      [`run-test-${ev.id}`, ev.source, JSON.stringify({ evidenceId: ev.id, newNodes: 0 })],
+    );
+    const pending = await store.undistilledEvidence(10_000);
+    expect(pending.map((row) => row.id)).not.toContain(ev.id);
+  });
+
+  it("a failed distill run keeps the row in the backlog for the next drain", async () => {
+    const ev = await store.insertEvidence({
+      text: "the model fell over on this one",
+      source: "session/failed.md",
+    });
+    await admin.query(
+      `insert into run (id, kind, status, label, latency_ms, error, metadata, created_at)
+       values ($1, 'distill', 'error', $2, 1, 'model timeout', $3::jsonb, now())`,
+      [`run-test-fail-${ev.id}`, ev.source, JSON.stringify({ evidenceId: ev.id })],
+    );
+    const pending = await store.undistilledEvidence(10_000);
+    expect(pending.map((row) => row.id)).toContain(ev.id);
+  });
+});

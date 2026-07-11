@@ -165,12 +165,6 @@ function isGapQuestion(question: BriefNode): boolean {
   );
 }
 
-/** What ingest needs to hand distillation to the background queue. The Queue in
- *  queue.ts satisfies this; keeping it an interface keeps Marrow off pg-boss. */
-export interface DistillEnqueuer {
-  enqueueDistill(evidenceId: string): Promise<string>;
-}
-
 export interface TraceSpan {
   evidenceId: string;
   source: string;
@@ -294,6 +288,7 @@ export interface SynthReport {
   staleDecided: SynthItem[];
   openQuestions: number;
   driftCatches: number;
+  undistilled: number;
 }
 
 /** One edge in the console graph, endpoints as bare node ids. */
@@ -338,6 +333,11 @@ export interface TruthMaintenanceBrief {
     totalItems: number;
     hasSecret: boolean;
   }[];
+  undistilledBacklog: {
+    count: number;
+    oldestCreatedAt?: string;
+    sample: { id: string; source: string; createdAt: string }[];
+  };
   nextActions: string[];
 }
 
@@ -385,7 +385,6 @@ export class Marrow {
     private readonly store: Store,
     private readonly model?: ModelProvider,
     private readonly embedding?: EmbeddingProvider,
-    private readonly enqueuer?: DistillEnqueuer,
     private readonly vision?: VisionProvider,
     private readonly transcription?: TranscriptionProvider,
   ) {}
@@ -393,12 +392,11 @@ export class Marrow {
   /**
    * Store the room verbatim as evidence and return the new evidence id fast. Raw
    * is never deduped and never mutated; offsets into the stored text stay
-   * stable. If a queue is wired, distillation is enqueued as a background job
-   * so ingestion never blocks on the model.
+   * stable. Distillation happens separately: inline via ingestAndDistill, per
+   * row via distill(id), or on a schedule via `marrow distill --pending`.
    */
   async ingest(input: IngestInput): Promise<string> {
     const evidence = await this.store.insertEvidence({ text: input.text, source: input.source });
-    if (this.enqueuer) await this.enqueuer.enqueueDistill(evidence.id);
     return evidence.id;
   }
 
@@ -597,9 +595,8 @@ export class Marrow {
     });
   }
 
-  /** Ingest, distill, then reconcile against the graph synchronously. This is the
-   *  in-process path (tests, the demo); it does not enqueue, so it never double
-   *  processes when a queue is also wired. */
+  /** Ingest, distill, then reconcile against the graph synchronously, so the
+   *  new evidence is retrievable the moment this returns. */
   async ingestAndDistill(input: IngestInput): Promise<{ evidenceId: string; nodes: Distilled[] }> {
     const evidence = await this.store.insertEvidence({ text: input.text, source: input.source });
     await this.distill(evidence.id);
@@ -1083,6 +1080,16 @@ export class Marrow {
       };
     });
 
+    const backlog = await this.store.countUndistilledEvidence();
+    const backlogSample =
+      backlog.count > 0
+        ? (await this.store.undistilledEvidence(5)).map((row) => ({
+            id: row.id,
+            source: row.source,
+            createdAt: row.createdAt,
+          }))
+        : [];
+
     const openProposedGoals = await this.briefNodes(openGoals, TRUTH_LIMIT);
     const contestedFacts = await this.briefNodes(
       [...contestedGoals, ...contestedDecisions],
@@ -1114,6 +1121,11 @@ export class Marrow {
         `Reverify ${staleDecided.length} decided fact${staleDecided.length === 1 ? "" : "s"} that may be stale.`,
       );
     }
+    if (backlog.count > 0) {
+      nextActions.push(
+        `Distill ${backlog.count} evidence row${backlog.count === 1 ? "" : "s"} so recent sessions become searchable truth (marrow distill --pending).`,
+      );
+    }
     if (nextActions.length === 0) nextActions.push("No immediate maintenance action.");
 
     return {
@@ -1126,6 +1138,13 @@ export class Marrow {
       gapQuestions: gapQuestions.slice(0, TRUTH_LIMIT),
       pendingCatches,
       connectorHealth,
+      undistilledBacklog: {
+        count: backlog.count,
+        ...(backlog.oldestCreatedAt !== undefined
+          ? { oldestCreatedAt: backlog.oldestCreatedAt }
+          : {}),
+        sample: backlogSample,
+      },
       nextActions,
     };
   }
@@ -1801,11 +1820,12 @@ export class Marrow {
    */
   async synthesize(windowDays = 7): Promise<SynthReport> {
     const sinceMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
-    const [decisions, goals, questions, catches] = await Promise.all([
+    const [decisions, goals, questions, catches, backlog] = await Promise.all([
       this.store.listDecisions(),
       this.store.listGoals(),
       this.getOpenQuestions(),
       this.store.listCatchEvents({ eventType: "catch_surfaced" }),
+      this.store.countUndistilledEvidence(),
     ]);
     const nodes: Distilled[] = [...decisions, ...goals];
     const inWindow = (iso: string): boolean => new Date(iso).getTime() >= sinceMs;
@@ -1830,6 +1850,7 @@ export class Marrow {
       driftCatches,
       staleDecided: staleDecided.length,
       openQuestions: questions.length,
+      undistilled: backlog.count,
     };
     return {
       windowDays,
@@ -1840,7 +1861,18 @@ export class Marrow {
       staleDecided,
       openQuestions: questions.length,
       driftCatches,
+      undistilled: backlog.count,
     };
+  }
+
+  /** The evidence rows nothing has distilled yet, newest first, bounded. */
+  async undistilledEvidence(limit = 50): Promise<Evidence[]> {
+    return this.store.undistilledEvidence(limit);
+  }
+
+  /** Backlog depth plus the age of its oldest row. */
+  async countUndistilledEvidence(): Promise<{ count: number; oldestCreatedAt?: string }> {
+    return this.store.countUndistilledEvidence();
   }
 
   async proposeNode(input: ProposeInput): Promise<Distilled> {
@@ -2130,12 +2162,12 @@ export class Marrow {
   /** Run one connector's sync now: pull since its cursor, dedup, ingest new
    *  evidence, advance the cursor on success, record a run. idempotent. */
   async syncConnector(name: string): Promise<ConnectorSyncResult> {
-    return new SyncEngine({ store: this.store, enqueuer: this.enqueuer }).runConnector(name);
+    return new SyncEngine({ store: this.store }).runConnector(name);
   }
 
   /** Run every enabled connector's sync now. */
   async syncAllConnectors(): Promise<ConnectorSyncResult[]> {
-    return new SyncEngine({ store: this.store, enqueuer: this.enqueuer }).runAll();
+    return new SyncEngine({ store: this.store }).runAll();
   }
 
   private async embedNode(
@@ -2192,7 +2224,6 @@ export function createMarrow(databaseUrl: string | undefined = process.env.DATAB
     store,
     createModelProvider(config),
     embedding,
-    undefined,
     createVisionProvider(config),
     createTranscriptionProvider(config),
   );

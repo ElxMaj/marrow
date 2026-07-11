@@ -45,7 +45,7 @@ beforeEach(async () => {
 });
 
 const withTranscription = (): Marrow =>
-  new Marrow(store, undefined, undefined, undefined, undefined, new FakeTranscription());
+  new Marrow(store, undefined, undefined, undefined, new FakeTranscription());
 
 describe("transcription adapter", () => {
   it("turns audio into append-only transcript evidence via the provider", async () => {

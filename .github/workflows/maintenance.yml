@@ -33,6 +33,13 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
+      # Drains evidence appended without distillation (the session-end hook,
+      # `marrow add --no-distill`, connector sync). An empty backlog needs no
+      # model key; a real drain needs MARROW_API_KEY set alongside the real
+      # DATABASE_URL. This workflow is a dispatch-only template until the cron
+      # above is uncommented and both secrets point at your brain.
+      - name: Drain the distill backlog
+        run: pnpm marrow distill --pending --limit 50
       - name: What changed and what deserves attention
         run: pnpm marrow synthesize --days 7
       - name: Graph hygiene

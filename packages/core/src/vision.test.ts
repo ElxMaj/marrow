@@ -46,7 +46,7 @@ beforeEach(async () => {
 
 describe("vision adapter", () => {
   it("turns an image into append-only evidence text via the provider", async () => {
-    const core = new Marrow(store, undefined, undefined, undefined, new FakeVision());
+    const core = new Marrow(store, undefined, undefined, new FakeVision());
     const id = await core.ingestImage(new Uint8Array([1, 2, 3]), "whiteboards/kickoff.jpg");
     const ev = await core.getEvidence(id);
     expect(ev?.text.length).toBeGreaterThan(0);
@@ -56,7 +56,7 @@ describe("vision adapter", () => {
   });
 
   it("spans into the produced text resolve like any evidence", async () => {
-    const core = new Marrow(store, undefined, undefined, undefined, new FakeVision());
+    const core = new Marrow(store, undefined, undefined, new FakeVision());
     const id = await core.ingestImage(new Uint8Array([1]), "whiteboards/x.jpg");
     const ev = await core.getEvidence(id);
     expect(ev?.text.slice(0, 10)).toBe("Whiteboard");

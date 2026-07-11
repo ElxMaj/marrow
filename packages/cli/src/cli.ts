@@ -232,6 +232,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   import <path>               Import markdown docs and decision logs as evidence
   add [file] [--source S]     Shorthand to ingest one file or stdin (distills by default)
   distill <evidenceId>        Distill an evidence row already ingested
+  distill --pending [--limit N]   Drain the undistilled backlog, newest first (default 50)
   answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
@@ -527,6 +528,31 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
     }
 
     case "distill": {
+      if (rest.includes("--pending")) {
+        const limitRaw = flagValue(rest, "--limit");
+        const limit = limitRaw !== undefined ? Number(limitRaw) : 50;
+        if (!Number.isFinite(limit) || limit < 1) {
+          throw new Error("Usage: marrow distill --pending [--limit N] (N >= 1)");
+        }
+        const { count } = await core.countUndistilledEvidence();
+        // an empty backlog needs no model: the scheduled template run stays green.
+        if (count === 0) return { distilled: [], remaining: 0 };
+        if (!core.canDistill) {
+          throw new Error(
+            `distill --pending: ${count} evidence row${count === 1 ? "" : "s"} waiting, but no model is configured. Set MARROW_API_KEY (or MARROW_PROVIDER for a local model) and retry.`,
+          );
+        }
+        const pending = await core.undistilledEvidence(limit);
+        const distilled: { evidenceId: string; source: string; nodes: number }[] = [];
+        for (const evidence of pending) {
+          await core.distill(evidence.id);
+          await core.linkAndMerge(evidence.id);
+          const nodes = await core.getNodesForEvidence(evidence.id);
+          distilled.push({ evidenceId: evidence.id, source: evidence.source, nodes: nodes.length });
+        }
+        const { count: remaining } = await core.countUndistilledEvidence();
+        return { distilled, remaining };
+      }
       const evidenceId = positional(rest);
       if (!evidenceId) throw new Error("Usage: marrow distill <evidenceId>");
       await core.distill(evidenceId);
@@ -801,6 +827,23 @@ function formatIngestSummary(s: Record<string, unknown>): string {
 /** Plain, readable output. Every node shows its status and provenance count, and
  *  the signature actions (answer, add) confirm what changed instead of dumping
  *  raw JSON. Pass --json for the machine contract. */
+function formatUndistilledBacklog(
+  backlog:
+    | {
+        count: number;
+        oldestCreatedAt?: string;
+        sample: { id: string; source: string; createdAt: string }[];
+      }
+    | undefined,
+): string {
+  if (!backlog || backlog.count === 0) return "  (None: every evidence row is distilled)";
+  const oldest = backlog.oldestCreatedAt ? `, oldest ${backlog.oldestCreatedAt}` : "";
+  return [
+    `  ${backlog.count} row${backlog.count === 1 ? "" : "s"} awaiting distillation${oldest}`,
+    ...backlog.sample.map((row) => `  ${row.source} (${row.id})`),
+  ].join("\n");
+}
+
 export function formatResult(result: unknown): string {
   if (!result || typeof result !== "object") return JSON.stringify(result, null, 2);
   const r = result as Record<string, unknown>;
@@ -891,6 +934,11 @@ export function formatResult(result: unknown): string {
         lineEnd?: number;
       }[];
       connectorHealth: { name: string; kind: string; status: string; lastError?: string }[];
+      undistilledBacklog?: {
+        count: number;
+        oldestCreatedAt?: string;
+        sample: { id: string; source: string; createdAt: string }[];
+      };
       nextActions: string[];
     };
     const section = (title: string, items: Parameters<typeof formatBriefNode>[0][]) => [
@@ -929,6 +977,9 @@ export function formatResult(result: unknown): string {
                 `  ${c.name} (${c.kind}) · ${c.status}${c.lastError ? ` · ${c.lastError}` : ""}`,
             )
             .join("\n"),
+      "",
+      "Undistilled evidence",
+      formatUndistilledBacklog(brief.undistilledBacklog),
       "",
       "Next actions",
       ...brief.nextActions.map((action) => `  - ${action}`),
@@ -1077,6 +1128,22 @@ export function formatResult(result: unknown): string {
       const head = items.length === 1 ? "" : `${verb} ${items.length} source(s):\n\n`;
       return head + items.map(formatIngestSummary).join("\n\n");
     }
+  }
+
+  // distill --pending: the backlog drain receipt.
+  if ("distilled" in r && Array.isArray(r.distilled) && "remaining" in r) {
+    const rows = r.distilled as { evidenceId: string; source: string; nodes: number }[];
+    const remaining = Number(r.remaining);
+    if (rows.length === 0 && remaining === 0)
+      return "Backlog empty: every evidence row is distilled.";
+    return [
+      `Distilled ${rows.length} evidence row${rows.length === 1 ? "" : "s"}:`,
+      ...rows.map(
+        (row) =>
+          `  ${row.source} (${row.evidenceId}) -> ${row.nodes} node${row.nodes === 1 ? "" : "s"}`,
+      ),
+      `${remaining} remaining in the backlog${remaining > 0 ? " (run again to continue)" : ""}.`,
+    ].join("\n");
   }
 
   // add / distill: one evidence row with what it created.

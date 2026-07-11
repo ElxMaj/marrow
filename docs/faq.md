@@ -96,4 +96,4 @@ Yes, a console. From a clone, `pnpm marrow web` opens it locally. It has section
 
 ## What is the stack?
 
-TypeScript and Node. One Postgres with pgvector as the single store, graph as tables plus embeddings. Pg-boss for the job queue. No Redis, Kafka, graph database or vector database. Model and embeddings behind a provider interface, default Claude, OpenAI-compatible and local (Ollama, LM Studio) all supported. One Postgres is a hard rule, every extra dependency is a reason someone will not self-host.
+TypeScript and Node. One Postgres with pgvector as the single store, graph as tables plus embeddings. Distillation runs inline or on a schedule through the CLI, no job queue at all. No Redis, Kafka, graph database or vector database. Model and embeddings behind a provider interface, default Claude, OpenAI-compatible and local (Ollama, LM Studio) all supported. One Postgres is a hard rule, every extra dependency is a reason someone will not self-host.

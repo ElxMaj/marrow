@@ -66,11 +66,7 @@ const drafts: IngestInput[] = [
 
 describe("SyncEngine.runConnectorInstance", () => {
   it("ingests new evidence, dedups on re-run, advances the cursor, records a run", async () => {
-    const enqueued: string[] = [];
-    const engine = new SyncEngine({
-      store,
-      enqueuer: { enqueueDistill: async (id: string) => (enqueued.push(id), "job") },
-    });
+    const engine = new SyncEngine({ store });
     const connector = new FakeConnector(drafts);
 
     const first = await engine.runConnectorInstance("fake", connector);
@@ -78,7 +74,9 @@ describe("SyncEngine.runConnectorInstance", () => {
     expect(first.itemsIngested).toBe(2);
     expect(first.itemsSkipped).toBe(0);
     expect(first.runId).toMatch(/^run_/);
-    expect(enqueued.length).toBe(2); // one distill job per new item
+    // synced evidence lands in the distill backlog for the scheduled drain.
+    const pending = await store.undistilledEvidence(10_000);
+    expect(pending.filter((row) => row.source.startsWith("fake:")).length).toBe(2);
 
     // evidence is append only and now present
     expect(await store.hasEvidenceSource("fake:1")).toBe(true);
