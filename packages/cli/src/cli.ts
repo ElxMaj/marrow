@@ -715,8 +715,10 @@ function formatNode(node: Distilled): string {
   // keeps the bare kind. status and provenance always show, per provenance-required.
   const label = node.kind === "goal" ? `goal (${node.goalType})` : node.kind;
   // the status pops, the confidence/provenance metadata recedes into dim, so a
-  // list of decisions reads as decided-vs-open at a glance.
-  return `  [${colorStatus(node.status)}] ${label}: ${nodeTitle(node)}\n      ${dim(`${c.value} ${c.source} · ${spans} source span${spans === 1 ? "" : "s"} · ${node.id}`)}`;
+  // list of decisions reads as decided-vs-open at a glance. a verified date shows
+  // when a human stood behind the fact (comma-free to keep the em-dash guard happy).
+  const verified = node.verifiedAt ? ` · verified ${relTime(node.verifiedAt)}` : "";
+  return `  [${colorStatus(node.status)}] ${label}: ${nodeTitle(node)}\n      ${dim(`${c.value} ${c.source} · ${spans} source span${spans === 1 ? "" : "s"}${verified} · ${node.id}`)}`;
 }
 
 function relTime(iso: string): string {
@@ -750,11 +752,14 @@ function formatBriefNode(node: {
   title: string;
   kind: string;
   status: string;
-  provenance?: { source: string; spanText: string }[];
+  stale?: boolean;
+  provenance?: { source: string; spanText: string; createdAt?: string }[];
 }): string {
   const span = node.provenance?.[0];
-  const source = span ? dim(`\n      Source: ${span.source}\n      "${span.spanText}"`) : "";
-  return `  [${colorStatus(node.status)}] ${node.kind}: ${node.title}${source}`;
+  const date = span?.createdAt ? ` · ${relTime(span.createdAt)}` : "";
+  const source = span ? dim(`\n      Source: ${span.source}${date}\n      "${span.spanText}"`) : "";
+  const stale = node.stale ? dim(" · stale, reverify") : "";
+  return `  [${colorStatus(node.status)}] ${node.kind}: ${node.title}${stale}${source}`;
 }
 
 /** Render one ingested source: where it came from, the detected format and

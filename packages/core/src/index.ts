@@ -13,6 +13,7 @@ export {
   type NeighborsBrief,
   type GraphEdge,
   type BrainGraph,
+  isFactStale,
 } from "./marrow.js";
 export {
   Queue,

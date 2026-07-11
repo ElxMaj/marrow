@@ -171,6 +171,8 @@ export interface DistillEnqueuer {
 export interface TraceSpan {
   evidenceId: string;
   source: string;
+  /** when the evidence this span points at was captured: the source date. */
+  createdAt: string;
   start: number;
   end: number;
   spanText: string;
@@ -190,10 +192,36 @@ export interface BriefNode {
   status: Status;
   confidence: Distilled["confidence"];
   provenance: TraceSpan[];
+  /** when a human promoted this fact, if ever. */
+  verifiedAt?: string;
+  /** true when a decided fact is past its expiry or older than the staleness
+   *  window: safe to build, but worth reverifying. */
+  stale?: boolean;
   goalType?: "product" | "user";
   entityId?: string;
   relatesTo?: string[];
   constraint?: boolean;
+}
+
+/**
+ * Whether a decided fact should be reverified: past its expiry, or (with no
+ * expiry) older than the staleness window by verification or last update. A
+ * fact that is not decided is never stale. `now` is injectable for testing.
+ */
+export function isFactStale(
+  node: {
+    status: Status;
+    verifiedAt?: string | undefined;
+    expiresAt?: string | undefined;
+    updatedAt: string;
+  },
+  staleDays: number = Number(process.env.MARROW_STALE_DAYS) || 365,
+  now: number = Date.now(),
+): boolean {
+  if (node.expiresAt && new Date(node.expiresAt).getTime() < now) return true;
+  if (node.status !== "decided") return false;
+  const base = node.verifiedAt ?? node.updatedAt;
+  return now - new Date(base).getTime() > staleDays * 24 * 60 * 60 * 1000;
 }
 
 /** One node linked to a seed node in the graph, with how it links and how far. */
@@ -837,6 +865,8 @@ export class Marrow {
       status: node.status,
       confidence: node.confidence,
       provenance: trace.spans,
+      ...(node.verifiedAt !== undefined ? { verifiedAt: node.verifiedAt } : {}),
+      ...(isFactStale(node) ? { stale: true } : {}),
       ...(node.kind === "goal" ? { goalType: node.goalType } : {}),
       ...(node.kind === "goal" && node.entityId !== undefined ? { entityId: node.entityId } : {}),
       ...(node.kind === "question" && node.relatesTo !== undefined
@@ -1024,6 +1054,12 @@ export class Marrow {
       )
     ) {
       nextActions.push("Run or repair stale connectors so the room stays current.");
+    }
+    const staleDecided = [...decidedGoals, ...decidedDecisions].filter((node) => isFactStale(node));
+    if (staleDecided.length > 0) {
+      nextActions.push(
+        `Reverify ${staleDecided.length} decided fact${staleDecided.length === 1 ? "" : "s"} that may be stale.`,
+      );
     }
     if (nextActions.length === 0) nextActions.push("No immediate maintenance action.");
 
@@ -1560,6 +1596,7 @@ export class Marrow {
       spans.push({
         evidenceId: span.evidenceId,
         source: evidence.source,
+        createdAt: evidence.createdAt,
         start: span.start,
         end: span.end,
         spanText: evidence.text.slice(span.start, span.end),

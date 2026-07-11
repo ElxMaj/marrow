@@ -322,6 +322,23 @@ describe("cli", () => {
     expect(rendered).toMatch(/link/);
   });
 
+  it("decisions shows a verified date on a human-promoted fact", async () => {
+    const ev = await store.insertEvidence({ text: "auth decision here", source: "room/vd.md" });
+    const dec = await store.insertDecision({
+      title: "Use passkeys everywhere",
+      rationale: "phishing resistance",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    await store.promoteToDecided(dec.id, "decision", { evidenceId: ev.id, start: 0, end: 4 });
+
+    const out = formatResult(await runCommand(core, ["decisions", "--status", "decided"]));
+    expect(out).toContain("Use passkeys everywhere");
+    expect(out).toContain("verified");
+  });
+
   it("rejects an unknown command", async () => {
     await expect(runCommand(core, ["frobnicate"])).rejects.toThrow(/Unknown command/);
   });

@@ -20,6 +20,7 @@ import {
 export interface TraceSpan {
   evidenceId: string;
   source: string;
+  createdAt?: string;
   start: number;
   end: number;
   spanText: string;
@@ -324,7 +325,7 @@ export function SourcePanel({
   async function copyCitation(s: TraceSpan, i: number): Promise<void> {
     try {
       await navigator.clipboard.writeText(
-        `${shortId(s.evidenceId)} [${s.start}-${s.end}] ${s.source}`,
+        `${shortId(s.evidenceId)} [${s.start}-${s.end}] ${s.source}${s.createdAt ? ` ${s.createdAt.slice(0, 10)}` : ""}`,
       );
       setCopied(i);
     } catch {
@@ -393,7 +394,10 @@ export function SourcePanel({
               </p>
               <blockquote className="span">
                 <mark className="hl">{s.spanText}</mark>
-                <cite>{s.source} · Verbatim, append only</cite>
+                <cite>
+                  {s.source}
+                  {s.createdAt ? ` · ${s.createdAt.slice(0, 10)}` : ""} · Verbatim, append only
+                </cite>
               </blockquote>
             </div>
           ))
