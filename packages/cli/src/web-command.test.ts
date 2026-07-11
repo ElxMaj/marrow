@@ -85,6 +85,7 @@ describe("cli web command", () => {
       getDecisions: vi.fn(async () => []),
       listEntities: vi.fn(async () => []),
       getOpenQuestions: vi.fn(async () => []),
+      getGraph: vi.fn(async () => ({ nodes: [], edges: [] })),
     } as unknown as Marrow;
     const port = await freePort();
     const signals = new Map<string, () => Promise<void>>();
