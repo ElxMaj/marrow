@@ -358,6 +358,20 @@ describe("cli", () => {
     expect(out).toContain("duplicate");
   });
 
+  it("synthesize reports what changed over a window", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/syn.md" });
+    await store.insertDecision({
+      title: "auth uses passkeys",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    const out = formatResult(await runCommand(core, ["synthesize"]));
+    expect(out).toContain("Synthesis");
+  });
+
   it("rejects an unknown command", async () => {
     await expect(runCommand(core, ["frobnicate"])).rejects.toThrow(/Unknown command/);
   });

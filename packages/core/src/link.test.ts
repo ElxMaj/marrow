@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { findDuplicateTitles } from "./lint.js";
 import { isFactStale, Marrow } from "./marrow.js";
+import { synthHeadline } from "./synthesize.js";
 import {
   type EmbeddingProvider,
   type EmbeddingResult,
@@ -469,6 +470,53 @@ describe("lint (graph hygiene)", () => {
     // lint only reports: it never resolves, deletes, or raises anything
     expect((await core.getDecisions()).length).toBe(decisionsBefore);
     expect((await core.getOpenQuestions()).length).toBe(questionsBefore);
+  });
+});
+
+describe("synthesize (weekly digest)", () => {
+  it("synthHeadline summarizes the window counts in plain language", () => {
+    const line = synthHeadline({
+      windowDays: 7,
+      changed: 3,
+      newlyDecided: 1,
+      contested: 2,
+      driftCatches: 0,
+      staleDecided: 1,
+      openQuestions: 4,
+    });
+    expect(line).toContain("last 7 days");
+    expect(line).toContain("3 facts changed");
+    expect(line).toContain("2 contested facts");
+    expect(line).toContain("4 open questions");
+  });
+
+  it("synthesize reports what changed and what deserves attention, read-only", async () => {
+    const ev = await store.insertEvidence({ text: "auth room notes here", source: "room/s.md" });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 4 }];
+    await store.insertDecision({
+      title: "auth uses passkeys",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: prov,
+    });
+    await store.insertGoal({
+      title: "zero-password sign-in",
+      goalType: "product",
+      status: "contested",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    const before = (await core.getDecisions()).length;
+
+    const report = await core.synthesize(7);
+    expect(report.windowDays).toBe(7);
+    expect(report.newlyDecided.length).toBeGreaterThanOrEqual(1);
+    expect(report.contested.length).toBeGreaterThanOrEqual(1);
+    expect(report.headline).toContain("last 7 days");
+    // read-only: nothing changed
+    expect((await core.getDecisions()).length).toBe(before);
   });
 });
 
