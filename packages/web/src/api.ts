@@ -2,7 +2,14 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, normalize } from "node:path";
 
-import { encryptSecret, type Marrow, Store, SyncEngine, type TraceResult } from "@marrowhq/core";
+import {
+  type BrainGraph,
+  encryptSecret,
+  type Marrow,
+  Store,
+  SyncEngine,
+  type TraceResult,
+} from "@marrowhq/core";
 import {
   type ConnectorConfigRecord,
   type ConnectorSyncResult,
@@ -47,6 +54,7 @@ export interface BrainState {
   decisions: Decision[];
   entities: Entity[];
   questions: Question[];
+  graph: BrainGraph;
   readOnly: boolean;
 }
 
@@ -207,12 +215,13 @@ export async function authorGoal(
 }
 
 export async function getState(core: Marrow): Promise<BrainState> {
-  const [decisions, entities, questions] = await Promise.all([
+  const [decisions, entities, questions, graph] = await Promise.all([
     core.getDecisions(),
     core.listEntities(),
     core.getOpenQuestions(),
+    core.getGraph(),
   ]);
-  return { decisions, entities, questions, readOnly: isReadOnly() };
+  return { decisions, entities, questions, graph, readOnly: isReadOnly() };
 }
 
 export async function trace(core: Marrow, nodeId: string): Promise<TraceResult> {

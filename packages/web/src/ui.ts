@@ -97,10 +97,32 @@ export interface GoalView {
   confidence: Confidence;
   provenance: Provenance[];
 }
+/** One node in the console graph map: identity, one-line title, status, and how
+ *  connected it is. Titles only, mirrors core IndexEntry. */
+export interface GraphNodeView {
+  id: string;
+  kind: "entity" | "decision" | "question" | "goal";
+  title: string;
+  status: string;
+  degree: number;
+}
+/** One edge in the console graph map, endpoints as bare node ids. */
+export interface GraphEdgeView {
+  from: string;
+  to: string;
+  relation: string;
+}
+/** The brain as a node-link graph, the shape the living map renders. */
+export interface BrainGraphView {
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+}
+
 export interface SandboxState {
   decisions: Decision[];
   entities: Entity[];
   questions: Question[];
+  graph?: BrainGraphView;
   readOnly?: boolean;
 }
 
@@ -571,4 +593,120 @@ export function catchStatusLabel(status: CatchView["status"]): string {
     default:
       return "unknown";
   }
+}
+
+// ---------------------------------------------------------------------------
+// The living map layout. A dependency-free, deterministic spring-electrical
+// (Fruchterman-Reingold) force layout: repulsion between every pair, attraction
+// along edges, cooled over a fixed number of iterations. Deterministic (a stable
+// hash seeds the initial ring, no Math.random) so the same graph always draws the
+// same shape and the layout is unit-testable. Float64Array keeps it fast and
+// typed under noUncheckedIndexedAccess.
+// ---------------------------------------------------------------------------
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+function hashString(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function layoutGraph(
+  nodes: { id: string }[],
+  edges: { from: string; to: string }[],
+  opts: { width?: number; height?: number; iterations?: number } = {},
+): Map<string, Point> {
+  const width = opts.width ?? 1000;
+  const height = opts.height ?? 1000;
+  const iterations = opts.iterations ?? 170;
+  const result = new Map<string, Point>();
+  const n = nodes.length;
+  if (n === 0) return result;
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const px = new Float64Array(n);
+  const py = new Float64Array(n);
+  const idIndex = new Map<string, number>();
+  const radius = Math.min(width, height) * 0.42;
+  nodes.forEach((node, i) => {
+    idIndex.set(node.id, i);
+    const h = hashString(node.id);
+    const angle = (i / n) * Math.PI * 2 + (h % 1000) / 1000;
+    const r = radius * (0.55 + ((h >>> 3) % 450) / 1000);
+    px[i] = cx + Math.cos(angle) * r;
+    py[i] = cy + Math.sin(angle) * r;
+  });
+
+  if (n > 1) {
+    const k = Math.sqrt((width * height) / n) * 0.8; // ideal edge length
+    const es: [number, number][] = [];
+    for (const edge of edges) {
+      const i = idIndex.get(edge.from);
+      const j = idIndex.get(edge.to);
+      if (i !== undefined && j !== undefined && i !== j) es.push([i, j]);
+    }
+    const dx = new Float64Array(n);
+    const dy = new Float64Array(n);
+    let temp = width * 0.1;
+    const cool = temp / (iterations + 1);
+    for (let it = 0; it < iterations; it += 1) {
+      dx.fill(0);
+      dy.fill(0);
+      // repulsion between every pair
+      for (let i = 0; i < n; i += 1) {
+        const xi = px[i] ?? 0;
+        const yi = py[i] ?? 0;
+        for (let j = i + 1; j < n; j += 1) {
+          const ddx = xi - (px[j] ?? 0);
+          const ddy = yi - (py[j] ?? 0);
+          const dist = Math.hypot(ddx, ddy) || 0.01;
+          const force = (k * k) / dist;
+          const fx = (ddx / dist) * force;
+          const fy = (ddy / dist) * force;
+          dx[i] = (dx[i] ?? 0) + fx;
+          dy[i] = (dy[i] ?? 0) + fy;
+          dx[j] = (dx[j] ?? 0) - fx;
+          dy[j] = (dy[j] ?? 0) - fy;
+        }
+      }
+      // attraction along edges
+      for (const [i, j] of es) {
+        const ddx = (px[i] ?? 0) - (px[j] ?? 0);
+        const ddy = (py[i] ?? 0) - (py[j] ?? 0);
+        const dist = Math.hypot(ddx, ddy) || 0.01;
+        const force = (dist * dist) / k;
+        const fx = (ddx / dist) * force;
+        const fy = (ddy / dist) * force;
+        dx[i] = (dx[i] ?? 0) - fx;
+        dy[i] = (dy[i] ?? 0) - fy;
+        dx[j] = (dx[j] ?? 0) + fx;
+        dy[j] = (dy[j] ?? 0) + fy;
+      }
+      // apply, limited by the current temperature, kept inside the frame
+      for (let i = 0; i < n; i += 1) {
+        const gx = dx[i] ?? 0;
+        const gy = dy[i] ?? 0;
+        const len = Math.hypot(gx, gy) || 0.01;
+        const nx = (px[i] ?? 0) + (gx / len) * Math.min(len, temp);
+        const ny = (py[i] ?? 0) + (gy / len) * Math.min(len, temp);
+        px[i] = Math.max(24, Math.min(width - 24, nx));
+        py[i] = Math.max(24, Math.min(height - 24, ny));
+      }
+      temp -= cool;
+    }
+  } else {
+    px[0] = cx;
+    py[0] = cy;
+  }
+
+  nodes.forEach((node, i) => result.set(node.id, { x: px[i] ?? 0, y: py[i] ?? 0 }));
+  return result;
 }

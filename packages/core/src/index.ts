@@ -11,6 +11,8 @@ export {
   type ProposeInput,
   type NeighborLink,
   type NeighborsBrief,
+  type GraphEdge,
+  type BrainGraph,
 } from "./marrow.js";
 export {
   Queue,

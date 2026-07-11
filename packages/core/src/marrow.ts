@@ -215,6 +215,19 @@ export interface NeighborsBrief {
   neighbors: NeighborLink[];
 }
 
+/** One edge in the console graph, endpoints as bare node ids. */
+export interface GraphEdge {
+  from: string;
+  to: string;
+  relation: Relation;
+}
+
+/** The brain as a node-link graph for the console map. Bounded, titles only. */
+export interface BrainGraph {
+  nodes: IndexEntry[];
+  edges: GraphEdge[];
+}
+
 export interface TaskBrief {
   task: string;
   status: "safe_to_build" | "ask_human_first";
@@ -759,6 +772,21 @@ export class Marrow {
    */
   async getIndex(limit = 200): Promise<IndexEntry[]> {
     return this.store.listIndex(limit);
+  }
+
+  /**
+   * The brain as a graph for the console map: the bounded set of nodes (id, kind,
+   * one-line title, status, degree) and the edges among them. Only edges whose
+   * both endpoints are in the node set are returned, so the map is self-contained.
+   * Titles only, never bodies or provenance.
+   */
+  async getGraph(nodeLimit = 200, edgeLimit = 800): Promise<BrainGraph> {
+    const nodes = await this.store.listIndex(nodeLimit);
+    const ids = new Set(nodes.map((node) => node.id));
+    const edges: GraphEdge[] = (await this.store.listEdges(edgeLimit))
+      .filter((edge) => ids.has(edge.fromId) && ids.has(edge.toId))
+      .map((edge) => ({ from: edge.fromId, to: edge.toId, relation: edge.relation }));
+    return { nodes, edges };
   }
 
   /**
