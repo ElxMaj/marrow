@@ -339,6 +339,25 @@ describe("cli", () => {
     expect(out).toContain("verified");
   });
 
+  it("lint reports graph-hygiene issues", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/lint.md" });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 4 }];
+    await store.insertEntity({
+      name: "Checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    const out = formatResult(await runCommand(core, ["lint"]));
+    expect(out).toContain("duplicate");
+  });
+
   it("rejects an unknown command", async () => {
     await expect(runCommand(core, ["frobnicate"])).rejects.toThrow(/Unknown command/);
   });

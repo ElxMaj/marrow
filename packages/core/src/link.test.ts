@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { findDuplicateTitles } from "./lint.js";
 import { isFactStale, Marrow } from "./marrow.js";
 import {
   type EmbeddingProvider,
@@ -400,6 +401,74 @@ describe("freshness surfacing", () => {
     const trace = await core.traceToSource(ent.id);
     expect(trace.spans[0]?.createdAt).toBeDefined();
     expect(new Date(trace.spans[0]?.createdAt ?? "").toString()).not.toBe("Invalid Date");
+  });
+});
+
+describe("lint (graph hygiene)", () => {
+  it("findDuplicateTitles groups nodes by normalized title", () => {
+    const groups = findDuplicateTitles(
+      [
+        { id: "a", title: "Magic Link Auth" },
+        { id: "b", title: "magic link auth" },
+        { id: "c", title: "Billing" },
+      ],
+      (n) => n.title,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.map((n) => n.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("lint reports duplicates, contradictions, and dead edges without writing", async () => {
+    const ev = await store.insertEvidence({ text: "auth room notes here", source: "room/l.md" });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 4 }];
+    await store.insertEntity({
+      name: "Checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    await store.insertDecision({
+      title: "auth uses passwords",
+      rationale: "legacy",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: prov,
+    });
+    await store.insertDecision({
+      title: "auth uses no passwords, magic links only",
+      rationale: "passwordless",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    await store.insertEdge({
+      fromId: "ent_ghost1",
+      fromKind: "entity",
+      toId: "dec_ghost2",
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.5,
+      source: "rule",
+    });
+
+    const decisionsBefore = (await core.getDecisions()).length;
+    const questionsBefore = (await core.getOpenQuestions()).length;
+    const report = await core.lint();
+
+    expect(report.counts.duplicateNodes).toBeGreaterThanOrEqual(1);
+    expect(report.counts.contradictions).toBeGreaterThanOrEqual(1);
+    expect(report.counts.deadEdges).toBeGreaterThanOrEqual(1);
+    // lint only reports: it never resolves, deletes, or raises anything
+    expect((await core.getDecisions()).length).toBe(decisionsBefore);
+    expect((await core.getOpenQuestions()).length).toBe(questionsBefore);
   });
 });
 

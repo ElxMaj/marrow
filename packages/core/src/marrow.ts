@@ -53,6 +53,7 @@ import {
   type TranscriptionProvider,
   type VisionProvider,
 } from "./providers/types.js";
+import { findDuplicateTitles } from "./lint.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
 import { skepticReasons, type VerifyReason, verdictFor } from "./skeptic.js";
 import { type IndexEntry, type RunFilter, Store, createStore } from "./store.js";
@@ -259,6 +260,19 @@ export interface VerifyReport {
   survived: number;
   flagged: number;
   results: VerifyResult[];
+}
+
+/** One graph-hygiene finding from a lint sweep. */
+export interface LintIssue {
+  kind: "duplicate_nodes" | "contradiction" | "dead_edge";
+  detail: string;
+  nodeIds: string[];
+}
+
+/** A read-only lint report: what a human should clean up. */
+export interface LintReport {
+  issues: LintIssue[];
+  counts: { duplicateNodes: number; contradictions: number; deadEdges: number };
 }
 
 /** One edge in the console graph, endpoints as bare node ids. */
@@ -1679,6 +1693,81 @@ export class Marrow {
       survived: results.filter((result) => result.verdict === "survived").length,
       flagged: results.filter((result) => result.verdict === "flagged").length,
       results,
+    };
+  }
+
+  /**
+   * A read-only graph-hygiene sweep. It reports duplicate nodes (same normalized
+   * title), contradictions (two decisions that conflict), and dead edges (an
+   * endpoint that no longer exists), so a human can clean the graph. It NEVER
+   * resolves or deletes a distilled fact: it only reports.
+   */
+  async lint(): Promise<LintReport> {
+    const [entities, decisions, goals, edges] = await Promise.all([
+      this.store.listEntities(),
+      this.store.listDecisions(),
+      this.store.listGoals(),
+      this.store.listEdges(2000),
+    ]);
+    const issues: LintIssue[] = [];
+
+    // 1. duplicate nodes: the same normalized title within a kind.
+    const dupChecks: [string, { id: string; title: string }[]][] = [
+      ["entity", entities.map((entity) => ({ id: entity.id, title: entity.name }))],
+      ["decision", decisions.map((decision) => ({ id: decision.id, title: decision.title }))],
+      ["goal", goals.map((goal) => ({ id: goal.id, title: goal.title }))],
+    ];
+    for (const [kind, nodes] of dupChecks) {
+      for (const group of findDuplicateTitles(nodes, (node) => node.title)) {
+        issues.push({
+          kind: "duplicate_nodes",
+          detail: `${group.length} ${kind} nodes share the title "${group[0]?.title ?? ""}"`,
+          nodeIds: group.map((node) => node.id),
+        });
+      }
+    }
+
+    // 2. contradictions: two decisions that conflict on a shared term.
+    for (let i = 0; i < decisions.length; i += 1) {
+      const a = decisions[i];
+      if (!a) continue;
+      for (let j = i + 1; j < decisions.length; j += 1) {
+        const b = decisions[j];
+        if (!b) continue;
+        const term = decisionsConflict(a, b);
+        if (term) {
+          issues.push({
+            kind: "contradiction",
+            detail: `"${a.title}" may contradict "${b.title}" (both touch "${term}")`,
+            nodeIds: [a.id, b.id],
+          });
+        }
+      }
+    }
+
+    // 3. dead edges: an endpoint that no longer exists (a node was deleted).
+    const ids = new Set<string>([
+      ...entities.map((entity) => entity.id),
+      ...decisions.map((decision) => decision.id),
+      ...goals.map((goal) => goal.id),
+    ]);
+    for (const edge of edges) {
+      if (!ids.has(edge.fromId) || !ids.has(edge.toId)) {
+        issues.push({
+          kind: "dead_edge",
+          detail: `a ${edge.relation} edge points at a missing node`,
+          nodeIds: [edge.fromId, edge.toId],
+        });
+      }
+    }
+
+    return {
+      issues,
+      counts: {
+        duplicateNodes: issues.filter((issue) => issue.kind === "duplicate_nodes").length,
+        contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
+        deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
+      },
     };
   }
 
