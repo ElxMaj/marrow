@@ -2,7 +2,14 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type Distilled, type Marrow, type RunFilter, normalizeTranscript } from "@marrowhq/core";
+import {
+  type Distilled,
+  type Marrow,
+  type RunFilter,
+  normalizeTranscript,
+  scrubEnabled,
+  scrubSecrets,
+} from "@marrowhq/core";
 import {
   type ConnectorSummary,
   type ConnectorSyncResult,
@@ -157,6 +164,7 @@ interface IngestSummary {
   speakers?: string[];
   turns?: number;
   nodes?: Distilled[];
+  redactedSecrets?: number;
 }
 
 /** Ingest one already-loaded text body: normalize it (any transcript format to
@@ -169,7 +177,16 @@ async function ingestText(
   distill: boolean,
 ): Promise<IngestSummary> {
   const norm = normalizeTranscript(raw, filename !== undefined ? { filename } : {});
-  const base = { source, format: norm.format, speakers: norm.speakers, turns: norm.turns };
+  // the store scrubs identically before the append; counting here lets the
+  // receipt say what was caught without the secret ever reaching the output.
+  const redactedSecrets = scrubEnabled() ? scrubSecrets(norm.text).total : 0;
+  const base = {
+    source,
+    format: norm.format,
+    speakers: norm.speakers,
+    turns: norm.turns,
+    ...(redactedSecrets > 0 ? { redactedSecrets } : {}),
+  };
   if (distill && core.canDistill) {
     const { evidenceId, nodes } = await core.ingestAndDistill({ text: norm.text, source });
     return { ...base, evidenceId, nodes, distilled: true };
@@ -814,7 +831,11 @@ function formatIngestSummary(s: Record<string, unknown>): string {
     ? s.speakers.filter((x) => typeof x === "string")
     : [];
   const speakers = speakerList.length > 0 ? ` · ${speakerList.length} speaker(s)` : "";
-  const head = `Ingested ${src}${fmt}${speakers} → ${id}`;
+  const redacted =
+    typeof s.redactedSecrets === "number" && s.redactedSecrets > 0
+      ? `\n  Redacted ${s.redactedSecrets} secret${s.redactedSecrets === 1 ? "" : "s"} before storage (evidence is immutable; set MARROW_SCRUB=off to opt out).`
+      : "";
+  const head = `Ingested ${src}${fmt}${speakers} → ${id}${redacted}`;
   if (s.distilled === false) {
     return `${head}\n  Evidence stored. Set MARROW_API_KEY (Claude) or MARROW_PROVIDER (a local LLM) to distill, then \`marrow distill ${id}\`.`;
   }

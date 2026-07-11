@@ -19,6 +19,7 @@ Marrow holds the product room: transcripts, standups, decisions, and the code co
 ## Retention and deletion
 
 - Raw evidence is append-only and immutable. This is a sacred property of the knowledge model.
+- **Secrets are scrubbed before the append, because there is no after.** Credential-shaped spans (AWS keys, GitHub and Slack tokens, sk- provider keys, JWTs, PEM private-key blocks, and `password:`/`token=` style assignments) are replaced with visible `[redacted:kind]` placeholders on every evidence insert, including connector sync and answer resolutions. The receipt reports how many were caught. `MARROW_SCRUB=off` opts out; not recommended, since a stored secret is immutable.
 - The open-source deployment owner controls the database and backups. If you need to delete a deployment, delete the database and any backups under your retention policy.
 - Hunk text in catch events is retained to power receipts and metrics. If your team needs a shorter retention window, enforce it at the database or backup layer until a product-level retention policy exists.
 

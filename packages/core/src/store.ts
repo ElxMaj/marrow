@@ -32,6 +32,8 @@ import {
 } from "@marrowhq/shared";
 import pg from "pg";
 
+import { scrubEnabled, scrubSecrets } from "./scrub.js";
+
 const { Pool } = pg;
 
 // Fixed first key for every connector advisory lock, so the per-connector lock
@@ -379,13 +381,17 @@ export class Store {
   // --- evidence: append only ------------------------------------------------
 
   async insertEvidence(draft: EvidenceDraft): Promise<Evidence> {
+    // secrets are caught here, BEFORE the append, because there is no after:
+    // evidence is immutable. This is the single choke point every writer
+    // (ingest, connector sync, answer resolutions) goes through.
+    const text = scrubEnabled() ? scrubSecrets(draft.text).text : draft.text;
     const id = `ev_${randomUUID()}`;
     const createdAt = new Date().toISOString();
     await this.pool.query(
       "insert into evidence (id, text, source, created_at) values ($1, $2, $3, $4)",
-      [id, draft.text, draft.source, createdAt],
+      [id, text, draft.source, createdAt],
     );
-    return { id, kind: "evidence", text: draft.text, source: draft.source, createdAt };
+    return { id, kind: "evidence", text, source: draft.source, createdAt };
   }
 
   async getEvidence(id: string): Promise<Evidence | undefined> {

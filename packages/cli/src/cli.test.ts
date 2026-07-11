@@ -451,6 +451,23 @@ describe("cli", () => {
     expect(formatResult(out)).toMatch(/marrow distill/);
   });
 
+  it("add redacts secrets before storage and says so in the receipt", async () => {
+    const bare = new Marrow(store);
+    const file = join(tmpdir(), "marrow-cli-secret.md");
+    writeFileSync(file, "we rotated the key, old one was AKIAIOSFODNN7EXAMPLE, do not reuse");
+    const out = (await runCommand(bare, ["add", file])) as {
+      evidenceId: string;
+      redactedSecrets?: number;
+    };
+    expect(out.redactedSecrets).toBe(1);
+    const rendered = formatResult(out);
+    expect(rendered).toContain("Redacted 1 secret before storage");
+    expect(rendered).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    const stored = await bare.getEvidence(out.evidenceId);
+    expect(stored?.text).toContain("[redacted:aws-access-key]");
+    expect(stored?.text).toContain("do not reuse");
+  });
+
   it("distill processes an already-ingested evidence row", async () => {
     const id = await core.ingest({ text: transcript, source: "x" });
     const out = (await runCommand(core, ["distill", id])) as { nodes: Distilled[] };

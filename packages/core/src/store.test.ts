@@ -890,3 +890,27 @@ describe("undistilled evidence backlog", () => {
     expect(pending.map((row) => row.id)).toContain(ev.id);
   });
 });
+
+describe("secret scrub at the evidence choke point", () => {
+  it("insertEvidence replaces credential-shaped spans before the append", async () => {
+    const ev = await store.insertEvidence({
+      text: "the deploy notes leaked AKIAIOSFODNN7EXAMPLE in the standup",
+      source: "standups/leak.md",
+    });
+    expect(ev.text).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(ev.text).toContain("[redacted:aws-access-key]");
+    // and the stored row matches what was returned: the secret never landed.
+    const stored = await store.getEvidence(ev.id);
+    expect(stored?.text).toBe(ev.text);
+    expect((await store.searchEvidence("AKIAIOSFODNN7EXAMPLE")).length).toBe(0);
+  });
+
+  it("covers the connector-sync path, which inserts evidence directly", async () => {
+    const ev = await store.insertEvidence({
+      text: "slack export: token ghp_abcDEF1234567890abcDEF1234567890 was shared in #eng",
+      source: "slack:C1:42",
+    });
+    expect(ev.text).toContain("[redacted:github-token]");
+    expect(ev.text).toContain("#eng");
+  });
+});
