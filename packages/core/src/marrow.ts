@@ -54,7 +54,7 @@ import {
   type VisionProvider,
 } from "./providers/types.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
-import { type RunFilter, Store, createStore } from "./store.js";
+import { type IndexEntry, type RunFilter, Store, createStore } from "./store.js";
 
 export interface IngestInput {
   text: string;
@@ -749,6 +749,16 @@ export class Marrow {
 
   async listEntities(): Promise<Entity[]> {
     return this.store.listEntities();
+  }
+
+  /**
+   * The front door: a bounded list of every node with its one-line title, status
+   * and degree (how connected it is), the hubs first. Titles only, never bodies
+   * or provenance, so an agent can see what exists before searching without
+   * pulling the whole brain.
+   */
+  async getIndex(limit = 200): Promise<IndexEntry[]> {
+    return this.store.listIndex(limit);
   }
 
   /**

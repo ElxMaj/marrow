@@ -30,6 +30,7 @@ export {
   type GoalDraft,
   type EdgeDraft,
   type Neighbor,
+  type IndexEntry,
   type EmbeddingInput,
   type CatchEvent,
   type CatchMetrics,

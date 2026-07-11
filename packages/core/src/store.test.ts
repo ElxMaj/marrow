@@ -743,4 +743,36 @@ describe("Store edges (the knowledge graph)", () => {
     expect(await store.listEdges()).toHaveLength(2);
     expect(await store.listEdges(1)).toHaveLength(1);
   });
+
+  it("listIndex lists every node with its degree, hubs first, titles only", async () => {
+    const hub = await ent("Auth");
+    const d1 = await dec("Use passkeys");
+    const d2 = await dec("Drop SMS OTP");
+    await store.insertEdge({
+      fromId: hub.id,
+      fromKind: "entity",
+      toId: d1.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: hub.id,
+      fromKind: "entity",
+      toId: d2.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+
+    const idx = await store.listIndex();
+    expect(idx).toHaveLength(3);
+    expect(idx[0]?.id).toBe(hub.id); // most connected first
+    expect(idx[0]?.degree).toBe(2);
+    expect(idx[0]?.title).toBe("Auth");
+    expect(idx.map((e) => e.kind).sort()).toEqual(["decision", "decision", "entity"]);
+    expect(await store.listIndex(1)).toHaveLength(1); // bounded
+  });
 });
