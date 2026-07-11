@@ -101,6 +101,55 @@ describe("search is semantic, not substring", () => {
   });
 });
 
+describe("current facts outrank retired facts", () => {
+  it("keyword search ranks the decided replacement above the freshly superseded loser", async () => {
+    const core = new Marrow(store); // keyword mode
+    const ev = await store.insertEvidence({
+      text: "payments provider notes",
+      source: "room/pay.md",
+    });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const human = { value: 1, source: "human" as const };
+    const loser = await store.insertDecision({
+      title: "checkout uses stripe payments",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: human,
+      provenance: prov,
+    });
+    const winner = await store.insertDecision({
+      title: "checkout uses adyen payments",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: human,
+      provenance: prov,
+    });
+    // the human retires the loser LAST, so its updated_at is newest: exactly
+    // the inversion that used to rank yesterday's truth first in keyword mode.
+    await store.supersede(loser.id, "decision");
+
+    const ids = (await core.search("payments", 5)).map((n) => n.id);
+    expect(ids.indexOf(winner.id)).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf(loser.id)).toBeGreaterThanOrEqual(0); // invalidation, not erasure
+    expect(ids.indexOf(winner.id)).toBeLessThan(ids.indexOf(loser.id));
+  });
+
+  it("semantic search ranks a live fact above a superseded one that is closer in meaning", async () => {
+    const core = new Marrow(store, undefined, createConceptEmbedding());
+    const retired = await seed(core, "decision", "sessions expire after 8 hours idle timeout");
+    const live = await seed(core, "decision", "sessions expire after 12 hours");
+    await store.supersede(retired, "decision");
+
+    // the query is semantically closest to the RETIRED phrasing; status must win
+    // across groups while distance still orders within a group.
+    const ids = (await core.search("idle timeout", 5)).map((n) => n.id);
+    expect(ids).toContain(retired); // still retrievable
+    expect(ids.indexOf(live)).toBeLessThan(ids.indexOf(retired));
+  });
+});
+
 describe("entity lookup", () => {
   it("gets an entity by id or name and returns undefined for an unknown lookup", async () => {
     const core = new Marrow(store, undefined, createConceptEmbedding());

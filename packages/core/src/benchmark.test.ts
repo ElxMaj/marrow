@@ -109,4 +109,22 @@ describe("benchmark", () => {
       first.marrow.questions.map((q) => q.tokens),
     );
   });
+
+  it("status-aware ranking does not move the token economics: same k, still scoped", async () => {
+    await seedBenchmarkBrain(core, docs);
+    // retire one decision the way answer() does: status superseded, updated_at
+    // bumped. The re-rank must reorder within the same k results, never grow
+    // the slice or add a graph walk, so the measured ratio holds by shape.
+    const [anyDecision] = await store.listDecisions();
+    if (!anyDecision) throw new Error("expected a seeded decision");
+    await store.supersede(anyDecision.id, "decision");
+
+    const report = await runBenchmark(core, {
+      corpusTexts: docs.map((d) => d.text),
+      questions: docs.map((d) => d.entity),
+      k: 2,
+    });
+    expect(report.ratio).toBeGreaterThan(1);
+    expect(report.marrow.questions.every((q) => q.results <= 2)).toBe(true);
+  });
 });

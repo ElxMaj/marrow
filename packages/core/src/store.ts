@@ -1065,23 +1065,26 @@ export class Store {
 
   /** Bounded text search across all node kinds. Never returns the whole
    *  graph: the limit is enforced per kind and on the merged result. */
+  /** Keyword fallback search. Retired rows (superseded, dismissed) sort behind
+   *  live rows within each kind: supersede() bumps updated_at, so a freshly
+   *  retired fact would otherwise rank FIRST for its own keywords. */
   async searchNodes(query: string, limit = 8): Promise<(Entity | Decision | Question | Goal)[]> {
     const like = `%${escapeLike(query)}%`;
     const [entities, decisions, questions, goals] = await Promise.all([
       this.pool.query<{ id: string }>(
-        "select id from entity where name ilike $1 or coalesce(description, '') ilike $1 order by updated_at desc limit $2",
+        "select id from entity where name ilike $1 or coalesce(description, '') ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from decision where title ilike $1 or rationale ilike $1 order by updated_at desc limit $2",
+        "select id from decision where title ilike $1 or rationale ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from question where prompt ilike $1 order by updated_at desc limit $2",
+        "select id from question where prompt ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from goal where title ilike $1 or coalesce(description, '') ilike $1 order by updated_at desc limit $2",
+        "select id from goal where title ilike $1 or coalesce(description, '') ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
     ]);

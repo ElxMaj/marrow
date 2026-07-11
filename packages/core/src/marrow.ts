@@ -380,6 +380,29 @@ export type ProposeInput =
  * distillation needs a model and an embedding provider, injected here so tests
  * use deterministic fakes and self-hosters bring their own.
  */
+// Current state wins: a stable re-rank so retired facts (superseded,
+// dismissed) sort behind live ones, and decided truth leads. Stable within
+// each weight group, so semantic distance still decides among live facts.
+// Same k results in, same k results out: the token benchmark is unaffected.
+const STATUS_WEIGHT: Record<string, number> = {
+  decided: 0,
+  open: 1,
+  contested: 1,
+  superseded: 2,
+  dismissed: 2,
+};
+
+function currentStateFirst<T extends { status: string }>(results: T[]): T[] {
+  return results
+    .map((node, index) => ({ node, index }))
+    .sort(
+      (a, b) =>
+        (STATUS_WEIGHT[a.node.status] ?? 1) - (STATUS_WEIGHT[b.node.status] ?? 1) ||
+        a.index - b.index,
+    )
+    .map((entry) => entry.node);
+}
+
 export class Marrow {
   constructor(
     private readonly store: Store,
@@ -802,7 +825,9 @@ export class Marrow {
       const queryVector = await this.embedQuery(query);
       if (queryVector) {
         const semantic = await this.store.nearestNodes(queryVector, k);
-        if (semantic.length >= k) return { results: semantic, mode: "semantic" };
+        if (semantic.length >= k) {
+          return { results: currentStateFirst(semantic), mode: "semantic" };
+        }
         const have = new Set(semantic.map((n) => n.id));
         for (const node of await this.store.searchNodes(query, k)) {
           if (have.has(node.id)) continue;
@@ -810,10 +835,10 @@ export class Marrow {
           have.add(node.id);
           if (semantic.length >= k) break;
         }
-        return { results: semantic, mode: "semantic" };
+        return { results: currentStateFirst(semantic), mode: "semantic" };
       }
     }
-    return { results: await this.store.searchNodes(query, k), mode: "keyword" };
+    return { results: currentStateFirst(await this.store.searchNodes(query, k)), mode: "keyword" };
   }
 
   async getDecisions(filter: { status?: Status } = {}): Promise<Decision[]> {
