@@ -243,6 +243,7 @@ Bootstrap / maintain:
                               Prepare a compact agent brief for one task
   truth                       Show the product truth maintenance brief
   verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
+  lint                        Sweep the graph for duplicates, contradictions, and dead edges
   init [repoPath]             One-time repo onboarding scan (asks, never asserts)
   drift [repoPath] [--staged|--unstaged|--since <ref>] [--no-semantic] [--ci]
                               Flag code that diverged from a decided fact
@@ -434,6 +435,9 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
 
     case "verify":
       return core.verify();
+
+    case "lint":
+      return core.lint();
 
     case "add": {
       const file = positional(rest);
@@ -1008,6 +1012,24 @@ export function formatResult(result: unknown): string {
     });
     return [
       `Skeptic: ${rep.checked} checked, ${rep.survived} survived, ${rep.flagged} flagged`,
+      ...lines,
+    ].join("\n");
+  }
+
+  // lint: the graph-hygiene sweep.
+  if ("issues" in r && "counts" in r && Array.isArray(r.issues)) {
+    const rep = r as {
+      issues: { kind: string; detail: string; nodeIds: string[] }[];
+      counts: { duplicateNodes: number; contradictions: number; deadEdges: number };
+    };
+    if (rep.issues.length === 0) {
+      return "Lint: clean. No duplicates, contradictions, or dead edges.";
+    }
+    const lines = rep.issues.map(
+      (issue) => `  [${issue.kind}] ${issue.detail}${dim(` · ${issue.nodeIds.join(", ")}`)}`,
+    );
+    return [
+      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge`,
       ...lines,
     ].join("\n");
   }
