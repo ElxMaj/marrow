@@ -3,11 +3,13 @@ import {
   type ConnectorSummary,
   type ConnectorSyncResult,
   type Decision,
+  type EdgeNodeKind,
   type Entity,
   type Evidence,
   type Goal,
   type Provenance,
   type Question,
+  type Relation,
   type RunMetrics,
   type RunRecord,
   type Status,
@@ -192,6 +194,25 @@ export interface BriefNode {
   entityId?: string;
   relatesTo?: string[];
   constraint?: boolean;
+}
+
+/** One node linked to a seed node in the graph, with how it links and how far. */
+export interface NeighborLink {
+  id: string;
+  kind: EdgeNodeKind;
+  title: string;
+  status: Status;
+  depth: number;
+  /** the relation and edge confidence, present for direct (1-hop) neighbors. */
+  relation?: Relation;
+  edgeConfidence?: number;
+}
+
+/** A node and the graph neighborhood around it. `node` is undefined when the id
+ *  resolves to nothing. Bounded: never the whole brain. */
+export interface NeighborsBrief {
+  node: { id: string; kind: EdgeNodeKind; title: string; status: Status } | undefined;
+  neighbors: NeighborLink[];
 }
 
 export interface TaskBrief {
@@ -728,6 +749,45 @@ export class Marrow {
 
   async listEntities(): Promise<Entity[]> {
     return this.store.listEntities();
+  }
+
+  /**
+   * The nodes linked to one node in the knowledge graph: the decisions about a
+   * feature, the goal it serves, the facts it conflicts with or supersedes. Each
+   * carries the relation and hop distance. Bounded (never the whole brain) and
+   * read only: walking edges changes no status.
+   */
+  async getNeighbors(nodeId: string, maxHops = 1): Promise<NeighborsBrief> {
+    const node = await this.store.getNode(nodeId);
+    if (!node) return { node: undefined, neighbors: [] };
+    const hops = Math.max(1, Math.min(2, Math.round(maxHops)));
+    // the direct edges give the relation + confidence for 1-hop neighbors.
+    const directed = new Map<string, { relation: Relation; edgeConfidence: number }>();
+    for (const edge of await this.store.edgesFor(nodeId)) {
+      const other = edge.fromId === nodeId ? edge.toId : edge.fromId;
+      if (!directed.has(other)) {
+        directed.set(other, { relation: edge.relation, edgeConfidence: edge.confidence });
+      }
+    }
+    const reached = await this.store.neighbors([nodeId], [node.kind], hops, 50);
+    const neighbors: NeighborLink[] = [];
+    for (const nb of reached) {
+      const n = await this.store.getNode(nb.id);
+      if (!n) continue;
+      const link = directed.get(nb.id);
+      neighbors.push({
+        id: n.id,
+        kind: n.kind,
+        title: nodeTitle(n),
+        status: n.status,
+        depth: nb.depth,
+        ...(link !== undefined ? link : {}),
+      });
+    }
+    return {
+      node: { id: node.id, kind: node.kind, title: nodeTitle(node), status: node.status },
+      neighbors,
+    };
   }
 
   private async briefNode(node: Distilled): Promise<BriefNode> {

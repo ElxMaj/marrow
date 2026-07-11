@@ -78,7 +78,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate catch_events, provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -92,6 +92,7 @@ describe("mcp tools", () => {
       "get_open_questions",
       "get_entity",
       "trace_to_source",
+      "get_neighbors",
       "prepare_task",
       "append_evidence",
       "propose_node",
@@ -113,6 +114,53 @@ describe("mcp tools", () => {
       expect(decision.status).toBeDefined();
       expect(decision.provenance[0]?.evidenceId).toBeDefined();
     }
+  });
+
+  it("get_neighbors returns the graph neighborhood with relation and depth", async () => {
+    const ev = await store.insertEvidence({ text: "checkout notes", source: "room/x.md" });
+    const provenance = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance,
+    });
+    const dec = await store.insertDecision({
+      title: "one-click checkout",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    await store.insertEdge({
+      fromId: ent.id,
+      fromKind: "entity",
+      toId: dec.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+
+    const res = (await call("get_neighbors", { nodeId: ent.id })) as {
+      node: { id: string } | undefined;
+      neighbors: { id: string; relation?: string; depth: number }[];
+    };
+    expect(res.node?.id).toBe(ent.id);
+    expect(res.neighbors).toHaveLength(1);
+    expect(res.neighbors[0]?.id).toBe(dec.id);
+    expect(res.neighbors[0]?.relation).toBe("concerns");
+    expect(res.neighbors[0]?.depth).toBe(1);
+  });
+
+  it("get_neighbors returns an empty neighborhood for an unknown node", async () => {
+    const res = (await call("get_neighbors", { nodeId: "ent_missing", maxHops: 2 })) as {
+      node: unknown;
+      neighbors: unknown[];
+    };
+    expect(res.node).toBeUndefined();
+    expect(res.neighbors).toEqual([]);
   });
 
   it("get_open_questions returns only open questions with provenance", async () => {

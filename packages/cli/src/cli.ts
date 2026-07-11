@@ -220,6 +220,7 @@ Read the room (task-scoped; every result carries status + provenance):
   questions                   Open questions, most consequential first
   entity <idOrName>           One entity with its status and provenance
   trace <nodeId>              The exact source span(s) a fact came from
+  neighbors <id> [--hops N]   Nodes linked to this one in the knowledge graph
 
 Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   ingest <path> [--source S]  Ingest a file, a whole folder, or stdin (distills by default)
@@ -393,6 +394,13 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       const nodeId = positional(rest);
       if (!nodeId) throw new Error("Usage: marrow trace <nodeId>");
       return core.traceToSource(nodeId);
+    }
+
+    case "neighbors": {
+      const nodeId = positional(rest);
+      if (!nodeId) throw new Error("Usage: marrow neighbors <nodeId> [--hops 1|2]");
+      const hopsRaw = flagValue(rest, "--hops");
+      return core.getNeighbors(nodeId, hopsRaw ? Number(hopsRaw) : 1);
     }
 
     case "loop": {
@@ -914,6 +922,35 @@ export function formatResult(result: unknown): string {
       ...superseded.map((n) => `Superseded: ${nodeTitle(n)} (${n.id})`),
       "Answer recorded as evidence, question closed.",
     ].join("\n");
+  }
+
+  // neighbors: a node and the graph neighborhood around it.
+  if ("neighbors" in r && Array.isArray(r.neighbors) && "node" in r) {
+    const node = r.node as
+      | { id: string; kind: string; title: string; status: string }
+      | undefined
+      | null;
+    if (!node) return "(Node not found.)";
+    const links = r.neighbors as {
+      id: string;
+      kind: string;
+      title: string;
+      status: string;
+      depth: number;
+      relation?: string;
+      edgeConfidence?: number;
+    }[];
+    const head = `Neighbors of ${node.title} (${node.id}) [${colorStatus(node.status)}]`;
+    if (links.length === 0) {
+      return `${head}\n  (No linked nodes yet. Edges form as the room is distilled and answered.)`;
+    }
+    const lines = links.map((nb) => {
+      const rel = nb.relation ? ` · ${nb.relation}` : "";
+      const conf = nb.edgeConfidence !== undefined ? ` (${nb.edgeConfidence})` : "";
+      const hop = `${nb.depth} hop${nb.depth === 1 ? "" : "s"}`;
+      return `  [${colorStatus(nb.status)}] ${nb.kind}: ${nb.title}${rel}${conf} · ${hop} · ${nb.id}`;
+    });
+    return [head, ...lines].join("\n");
   }
 
   // ingest / import: one or many evidence rows, each with what it distilled.

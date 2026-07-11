@@ -115,6 +115,25 @@ export function createTools(core: Marrow): ToolDef[] {
       },
     },
     {
+      name: "get_neighbors",
+      description:
+        "List the nodes linked to a given node in the knowledge graph: the decisions about a feature, the goal it serves, the facts it conflicts with or supersedes. Each carries the relation, hop distance, status and title. Walk this to understand a fact in context. Bounded, never the whole brain.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          nodeId: { type: "string" },
+          maxHops: { type: "number", description: "how far to walk, 1 or 2 (default 1)" },
+        },
+        required: ["nodeId"],
+      },
+      handler: async (args) => {
+        const { nodeId, maxHops } = z
+          .object({ nodeId: z.string(), maxHops: z.number().int().min(1).max(2).default(1) })
+          .parse(args);
+        return core.getNeighbors(nodeId, maxHops);
+      },
+    },
+    {
       name: "prepare_task",
       description:
         "Prepare the compact task brief an agent should read before building: relevant decided goals and decisions, open or contested questions, exact provenance spans, safe-to-build vs ask-human-first sections, and optional drift check receipts. Never returns the whole brain.",
