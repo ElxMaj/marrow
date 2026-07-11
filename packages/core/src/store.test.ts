@@ -914,3 +914,151 @@ describe("secret scrub at the evidence choke point", () => {
     expect(ev.text).toContain("#eng");
   });
 });
+
+describe("dedupe delete completeness", () => {
+  const confidence = { value: 0.6, source: "model" as const };
+
+  async function seedDupePair() {
+    const ev = await store.insertEvidence({
+      text: "the billing portal handles invoices and refunds",
+      source: "room/dupe.md",
+    });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 10 }];
+    const canonical = await store.insertEntity({
+      name: "billing portal",
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    const dupe = await store.insertEntity({
+      name: "Billing Portal",
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    const decision = await store.insertDecision({
+      title: "invoices are immutable after send",
+      rationale: "",
+      constraint: true,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    return { canonical, dupe, decision };
+  }
+
+  it("re-points the duplicate's edges and verifications to the canonical node", async () => {
+    const { canonical, dupe, decision } = await seedDupePair();
+    await store.insertEdge({
+      fromId: dupe.id,
+      fromKind: "entity",
+      toId: decision.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    await store.insertVerification({
+      nodeId: dupe.id,
+      nodeKind: "entity",
+      verdict: "survived",
+      reasons: [],
+    });
+
+    await store.deleteEntity(dupe.id, canonical.id);
+
+    const edges = await store.edgesFor(canonical.id);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.fromId).toBe(canonical.id);
+    expect(edges[0]?.toId).toBe(decision.id);
+    expect(await store.edgesFor(dupe.id)).toHaveLength(0);
+    expect((await store.latestVerification(canonical.id))?.verdict).toBe("survived");
+  });
+
+  it("drops edges that would duplicate an existing canonical edge, and self-loops", async () => {
+    const { canonical, dupe, decision } = await seedDupePair();
+    // the canonical node already has the same relation to the decision...
+    await store.insertEdge({
+      fromId: canonical.id,
+      fromKind: "entity",
+      toId: decision.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    // ...the dupe carries a copy of it, plus an edge to the canonical itself,
+    // which would become a self-loop after re-pointing.
+    await store.insertEdge({
+      fromId: dupe.id,
+      fromKind: "entity",
+      toId: decision.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.5,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: dupe.id,
+      fromKind: "entity",
+      toId: canonical.id,
+      toKind: "entity",
+      relation: "relates_to",
+      confidence: 0.5,
+      source: "rule",
+    });
+
+    await store.deleteEntity(dupe.id, canonical.id);
+
+    const edges = await store.edgesFor(canonical.id);
+    expect(edges).toHaveLength(1); // the original edge, no dup, no self-loop
+    expect(edges[0]?.confidence).toBe(0.9);
+    expect(edges.every((e) => e.fromId !== e.toId)).toBe(true);
+  });
+
+  it("re-points edges arriving AT the duplicate (to_id side) as well", async () => {
+    const { canonical, dupe, decision } = await seedDupePair();
+    await store.insertEdge({
+      fromId: decision.id,
+      fromKind: "decision",
+      toId: dupe.id,
+      toKind: "entity",
+      relation: "serves",
+      confidence: 0.8,
+      source: "rule",
+    });
+
+    await store.deleteEntity(dupe.id, canonical.id);
+
+    const edges = await store.edgesFor(canonical.id);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.toId).toBe(canonical.id);
+  });
+
+  it("without a canonical, removes the node's edges and verifications so nothing dangles", async () => {
+    const { canonical, dupe, decision } = await seedDupePair();
+    void canonical;
+    await store.insertEdge({
+      fromId: dupe.id,
+      fromKind: "entity",
+      toId: decision.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    await store.insertVerification({
+      nodeId: dupe.id,
+      nodeKind: "entity",
+      verdict: "flagged",
+      reasons: ["single_source"],
+    });
+
+    await store.deleteEntity(dupe.id);
+
+    expect(await store.edgesFor(dupe.id)).toHaveLength(0);
+    expect(await store.latestVerification(dupe.id)).toBeUndefined();
+    const all = await store.listEdges(1000);
+    expect(all.every((e) => e.fromId !== dupe.id && e.toId !== dupe.id)).toBe(true);
+  });
+});
