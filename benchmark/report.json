@@ -9,7 +9,7 @@
       {
         "question": "How do users sign in, passwords or magic links?",
         "tokens": 466,
-        "latencyMs": 1.23,
+        "latencyMs": 0.71,
         "results": 4,
         "recall": 1,
         "noiseTokens": 247
@@ -17,7 +17,7 @@
       {
         "question": "What is the session expiry and idle timeout policy?",
         "tokens": 405,
-        "latencyMs": 0.66,
+        "latencyMs": 0.55,
         "results": 4,
         "recall": 1,
         "noiseTokens": 188
@@ -25,7 +25,7 @@
       {
         "question": "How do billing webhooks handle retries and duplicates?",
         "tokens": 410,
-        "latencyMs": 0.62,
+        "latencyMs": 0.93,
         "results": 4,
         "recall": 1,
         "noiseTokens": 190
@@ -33,7 +33,7 @@
       {
         "question": "How does a large CSV export get delivered?",
         "tokens": 412,
-        "latencyMs": 0.84,
+        "latencyMs": 0.55,
         "results": 4,
         "recall": 1,
         "noiseTokens": 189
@@ -41,7 +41,7 @@
       {
         "question": "What did we decide about self serve signup and activation?",
         "tokens": 405,
-        "latencyMs": 0.79,
+        "latencyMs": 0.75,
         "results": 4,
         "recall": 1,
         "noiseTokens": 186
@@ -49,7 +49,7 @@
       {
         "question": "Which roles and access levels exist for a seat?",
         "tokens": 461,
-        "latencyMs": 0.78,
+        "latencyMs": 0.54,
         "results": 4,
         "recall": 1,
         "noiseTokens": 246
@@ -57,7 +57,7 @@
       {
         "question": "How do offline mobile edits sync and handle conflicts?",
         "tokens": 473,
-        "latencyMs": 0.76,
+        "latencyMs": 0.59,
         "results": 4,
         "recall": 1,
         "noiseTokens": 252
@@ -65,7 +65,7 @@
       {
         "question": "How long are deleted projects recoverable before purge?",
         "tokens": 407,
-        "latencyMs": 0.94,
+        "latencyMs": 0.57,
         "results": 4,
         "recall": 1,
         "noiseTokens": 189
@@ -73,7 +73,7 @@
       {
         "question": "How do deploys roll out and how fast is rollback?",
         "tokens": 409,
-        "latencyMs": 0.75,
+        "latencyMs": 0.83,
         "results": 4,
         "recall": 1,
         "noiseTokens": 189
@@ -81,7 +81,7 @@
       {
         "question": "Does the trial require a credit card and how long is it?",
         "tokens": 401,
-        "latencyMs": 0.86,
+        "latencyMs": 0.68,
         "results": 4,
         "recall": 1,
         "noiseTokens": 187
@@ -89,7 +89,7 @@
       {
         "question": "Do we send per-event emails or a daily digest?",
         "tokens": 403,
-        "latencyMs": 1.16,
+        "latencyMs": 0.54,
         "results": 4,
         "recall": 1,
         "noiseTokens": 185
@@ -97,14 +97,14 @@
       {
         "question": "How does search order decided facts versus open proposals?",
         "tokens": 404,
-        "latencyMs": 0.76,
+        "latencyMs": 0.53,
         "results": 4,
         "recall": 1,
         "noiseTokens": 187
       }
     ],
     "avgTokens": 421,
-    "avgLatencyMs": 0.85
+    "avgLatencyMs": 0.65
   },
   "ratio": 2.9,
   "quality": {
@@ -116,66 +116,88 @@
       {
         "question": "How do users sign in, passwords or magic links?",
         "tokens": 797,
-        "latencyMs": 8.33
+        "latencyMs": 3.69
       },
       {
         "question": "What is the session expiry and idle timeout policy?",
         "tokens": 1157,
-        "latencyMs": 11.85
+        "latencyMs": 8.21
       },
       {
         "question": "How do billing webhooks handle retries and duplicates?",
         "tokens": 754,
-        "latencyMs": 4.66
+        "latencyMs": 4.37
       },
       {
         "question": "How does a large CSV export get delivered?",
         "tokens": 395,
-        "latencyMs": 4.22
+        "latencyMs": 3.7
       },
       {
         "question": "What did we decide about self serve signup and activation?",
         "tokens": 751,
-        "latencyMs": 4.61
+        "latencyMs": 4.01
       },
       {
         "question": "Which roles and access levels exist for a seat?",
         "tokens": 1154,
-        "latencyMs": 4.71
+        "latencyMs": 4.52
       },
       {
         "question": "How do offline mobile edits sync and handle conflicts?",
         "tokens": 802,
-        "latencyMs": 4.18
+        "latencyMs": 4.21
       },
       {
         "question": "How long are deleted projects recoverable before purge?",
         "tokens": 395,
-        "latencyMs": 3.8
+        "latencyMs": 3.54
       },
       {
         "question": "How do deploys roll out and how fast is rollback?",
         "tokens": 928,
-        "latencyMs": 4.16
+        "latencyMs": 4.03
       },
       {
         "question": "Does the trial require a credit card and how long is it?",
         "tokens": 1155,
-        "latencyMs": 4.45
+        "latencyMs": 4.4
       },
       {
         "question": "Do we send per-event emails or a daily digest?",
         "tokens": 572,
-        "latencyMs": 3.88
+        "latencyMs": 3.77
       },
       {
         "question": "How does search order decided facts versus open proposals?",
         "tokens": 625,
-        "latencyMs": 4.06
+        "latencyMs": 3.85
       }
     ],
     "avgTokens": 790,
-    "avgLatencyMs": 5.24,
+    "avgLatencyMs": 4.36,
     "ratio": 1.5
+  },
+  "evals": {
+    "catch": {
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "cases": 3
+    },
+    "write": {
+      "writePrecision": 1,
+      "writeRecall": 1,
+      "falseMemoryRate": 0,
+      "duplicateRate": 0.2222222222222222,
+      "entityDuplicateRate": 0,
+      "ingestionReadyP95Ms": 11.6,
+      "cases": 5
+    },
+    "temporal": {
+      "currentStateAccuracy": 1,
+      "historicalAccuracy": 1,
+      "cases": 4
+    }
   }
 }

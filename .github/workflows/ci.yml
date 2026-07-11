@@ -30,3 +30,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm smoke:packed
+      # the published numbers in benchmark/report.json must match the code:
+      # regenerate into a temp file and diff the deterministic fields.
+      - name: Benchmark drift gate
+        run: node scripts/check-benchmark-drift.mjs

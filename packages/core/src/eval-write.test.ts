@@ -70,7 +70,10 @@ describe("write-quality eval (the Mem0 lesson, gated)", () => {
     expect(report.falseMemoryRate).toBe(0);
     // labeled expectations are met.
     expect(report.writePrecision).toBeGreaterThanOrEqual(0.8);
+    expect(report.writePrecision).toBeLessThanOrEqual(1);
     expect(report.writeRecall).toBeGreaterThanOrEqual(0.8);
+    // a rate above 1 means the accounting is broken, not that we are great.
+    expect(report.writeRecall).toBeLessThanOrEqual(1);
     // entities merge at write time; their restatement never duplicates.
     expect(report.entityDuplicateRate).toBe(0);
     // decisions and goals have no write-time near-duplicate guard until R17:

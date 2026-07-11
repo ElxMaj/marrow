@@ -93,7 +93,7 @@ The context window is metered. Every token your agent loads is paid for on every
 
 Marrow is built the other way. Your agent instruction file stays short and points at Marrow instead of carrying the room inside it. Then, per task, the agent pulls only the slice it needs. `prepare_task` returns the decided and open facts relevant to that one task, each with provenance, and never the whole brain. The library stays on disk. Only the decisions enter the prompt.
 
-That saving is measured, not projected, and there are two honest numbers, reported separately. On a labeled 12-doc synthetic corpus (`packages/core/fixtures/benchmark/`), a flat task-scoped search loads 2.9x fewer tokens than dumping the corpus, at recall 1.0 on the labeled relevant nodes. The full `prepare_task` brief, the slice an agent actually reads, is richer (decided truth, open questions, provenance) and comes out at 1.5x fewer tokens than the dump. Run `pnpm benchmark` to reproduce both; the committed run lives in `benchmark/report.json`.
+That saving is measured, not projected, and there are two honest numbers, reported separately. On a labeled 12-doc synthetic corpus (`packages/core/fixtures/benchmark/`), a flat task-scoped search loads 2.9x fewer tokens than dumping the corpus, at recall 1.0 on the labeled relevant nodes. The full `prepare_task` brief, the slice an agent actually reads, is richer (decided truth, open questions, provenance) and comes out at 1.5x fewer tokens than the dump. Run `pnpm benchmark` to reproduce both; the committed run lives in `benchmark/report.json`, CI fails if the numbers drift from the code, and [docs/evaluating-agent-memory.md](./docs/evaluating-agent-memory.md) defines every metric and what is not claimed.
 
 ## Stack
 

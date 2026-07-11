@@ -418,6 +418,11 @@ export class Marrow {
    * stable. Distillation happens separately: inline via ingestAndDistill, per
    * row via distill(id), or on a schedule via `marrow distill --pending`.
    */
+  /** The connection string of the brain this facade talks to. */
+  get databaseUrl(): string {
+    return this.store.databaseUrl;
+  }
+
   async ingest(input: IngestInput): Promise<string> {
     const evidence = await this.store.insertEvidence({ text: input.text, source: input.source });
     return evidence.id;
