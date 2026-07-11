@@ -247,7 +247,7 @@ Bootstrap / maintain:
                               Prepare a compact agent brief for one task
   truth                       Show the product truth maintenance brief
   verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
-  lint                        Sweep the graph for duplicates, contradictions, and dead edges
+  lint                        Sweep the graph for duplicates, contradictions, dead edges, and instruction smells
   synthesize [--days N]       What changed and what deserves attention over a window (default 7d)
   init [repoPath]             One-time repo onboarding scan (asks, never asserts)
   drift [repoPath] [--staged|--unstaged|--since <ref>] [--no-semantic] [--ci]
@@ -1115,16 +1115,21 @@ export function formatResult(result: unknown): string {
   if ("issues" in r && "counts" in r && Array.isArray(r.issues)) {
     const rep = r as {
       issues: { kind: string; detail: string; nodeIds: string[] }[];
-      counts: { duplicateNodes: number; contradictions: number; deadEdges: number };
+      counts: {
+        duplicateNodes: number;
+        contradictions: number;
+        deadEdges: number;
+        instructionSmells?: number;
+      };
     };
     if (rep.issues.length === 0) {
-      return "Lint: clean. No duplicates, contradictions, or dead edges.";
+      return "Lint: clean. No duplicates, contradictions, dead edges, or instruction smells.";
     }
     const lines = rep.issues.map(
       (issue) => `  [${issue.kind}] ${issue.detail}${dim(` · ${issue.nodeIds.join(", ")}`)}`,
     );
     return [
-      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge`,
+      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell`,
       ...lines,
     ].join("\n");
   }
