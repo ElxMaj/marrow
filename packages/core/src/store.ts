@@ -161,6 +161,26 @@ export interface CatchMetrics {
   dismissRate: number | null;
 }
 
+/** One skeptic verdict to record. The store stamps id and created_at. A verdict
+ *  never changes the node it is about: it is advisory, like a catch. */
+export interface VerificationDraft {
+  nodeId: string;
+  nodeKind: DistilledKind;
+  verdict: "survived" | "flagged";
+  reasons: string[];
+  modelUsed?: string | undefined;
+}
+
+export interface VerificationRecord {
+  id: number;
+  nodeId: string;
+  nodeKind: string;
+  verdict: "survived" | "flagged";
+  reasons: string[];
+  modelUsed: string | null;
+  createdAt: string;
+}
+
 // --- observability + connector sync inputs --------------------------------
 
 /** A finished operation to record. The store stamps id and created_at. */
@@ -872,6 +892,58 @@ export class Store {
       [[a, b]],
     );
     return res.rows.length > 0;
+  }
+
+  // --- skeptic verdicts: append-only, advisory -----------------------------
+
+  /** Record one skeptic verdict. Append only; it never touches the node. */
+  async insertVerification(draft: VerificationDraft): Promise<number> {
+    const res = await this.pool.query<{ id: string | number }>(
+      `insert into verification (node_id, node_kind, verdict, reasons, model_used, created_at)
+       values ($1, $2, $3, $4, $5, $6)
+       returning id`,
+      [
+        draft.nodeId,
+        draft.nodeKind,
+        draft.verdict,
+        draft.reasons,
+        draft.modelUsed ?? null,
+        new Date().toISOString(),
+      ],
+    );
+    const row = res.rows[0];
+    if (!row) throw new Error("verification insert failed");
+    const id = Number(row.id);
+    if (!Number.isFinite(id)) throw new Error("verification insert returned invalid id");
+    return id;
+  }
+
+  /** The most recent verdict for a node, if any. */
+  async latestVerification(nodeId: string): Promise<VerificationRecord | undefined> {
+    const res = await this.pool.query<{
+      id: string | number;
+      node_id: string;
+      node_kind: string;
+      verdict: string;
+      reasons: string[];
+      model_used: string | null;
+      created_at: Date | string;
+    }>(
+      `select id, node_id, node_kind, verdict, reasons, model_used, created_at
+       from verification where node_id = $1 order by id desc limit 1`,
+      [nodeId],
+    );
+    const row = res.rows[0];
+    if (!row) return undefined;
+    return {
+      id: Number(row.id),
+      nodeId: row.node_id,
+      nodeKind: row.node_kind,
+      verdict: row.verdict as "survived" | "flagged",
+      reasons: row.reasons,
+      modelUsed: row.model_used,
+      createdAt: iso(row.created_at),
+    };
   }
 
   // --- catch instrumentation -------------------------------------------------
