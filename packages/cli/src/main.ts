@@ -92,6 +92,18 @@ async function runMigrateCommand(): Promise<void> {
   console.log(`Schema ready: applied ${result.applied.length} migration(s).`);
 }
 
+/** `marrow watch`: like `web`, this is long-running. It must stay outside the
+ *  run-and-close path: the folder watcher keeps ingesting after setup, so the
+ *  core (and its Postgres pool) has to live until Ctrl+C, not be closed the
+ *  moment `runCommand` returns. `runCommand`'s watch case wires the SIGINT and
+ *  SIGTERM shutdown that closes the core; here we just print and stay resident. */
+async function runWatchCommand(argv: string[]): Promise<void> {
+  const core = createMarrow();
+  const result = await runCommand(core, argv);
+  console.log(JSON.stringify(result, null, 2));
+  await new Promise<never>(() => {}); // stay up until the watch case's SIGINT handler exits
+}
+
 function version(): string {
   try {
     const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as {
@@ -122,6 +134,7 @@ async function main(): Promise<void> {
   if (argv[0] === "demo") return runDemoCommand();
   if (argv[0] === "migrate") return runMigrateCommand();
   if (argv[0] === "doctor") return runDoctorCommand(argv);
+  if (argv[0] === "watch") return runWatchCommand(argv);
 
   const json = argv.includes("--json");
   const core = createMarrow();
