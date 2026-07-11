@@ -347,7 +347,7 @@ export function createTools(core: Marrow): ToolDef[] {
     {
       name: "accept_catch",
       description:
-        "Record that you acted on a surfaced drift catch. Stores the resolution as evidence, promotes the question to decided, and writes a catch_acted_on event. Only questions that relate to a decided decision can be accepted.",
+        "Record that you acted on a surfaced drift catch. Stores the resolution as evidence plus a catch_acted_on event, but does NOT close the question: recording is not deciding, and closing stays a human act (marrow accept). Only questions that relate to a decided decision can be recorded against.",
       inputSchema: {
         type: "object",
         properties: {
@@ -364,13 +364,13 @@ export function createTools(core: Marrow): ToolDef[] {
         const { questionId, resolution } = z
           .object({ questionId: z.string(), resolution: z.string() })
           .parse(args);
-        return core.acceptCatch(questionId, resolution);
+        return core.recordCatchResolution(questionId, resolution, "acted_on");
       },
     },
     {
       name: "dismiss_catch",
       description:
-        "Mark a surfaced drift catch as noise. Records the reason as evidence, sets the question to dismissed, and writes a catch_dismissed event. Only questions that relate to a decided decision can be dismissed.",
+        "Record that a surfaced drift catch looks like noise. Stores the reason as evidence plus a catch_dismissed event, but does NOT close the question: silencing an alarm stays a human act (marrow dismiss). Only questions that relate to a decided decision can be recorded against.",
       inputSchema: {
         type: "object",
         properties: {
@@ -383,7 +383,7 @@ export function createTools(core: Marrow): ToolDef[] {
         const { questionId, reason } = z
           .object({ questionId: z.string(), reason: z.string() })
           .parse(args);
-        return core.dismissCatch(questionId, reason);
+        return core.recordCatchResolution(questionId, reason, "dismissed");
       },
     },
   ];

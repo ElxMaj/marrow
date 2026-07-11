@@ -377,6 +377,52 @@ describe("mcp tools", () => {
     expect(node.confidence.source).toBe("model");
   });
 
+  it("accept_catch and dismiss_catch record reactions but can NEVER close the question", async () => {
+    // seed a decided decision and surface a drift catch against it.
+    const text = "We decided magic links, no passwords.";
+    const ev = await store.insertEvidence({ text, source: "interviews/auth.md" });
+    await store.insertDecision({
+      title: "Auth uses magic links, no passwords",
+      rationale: "password login is out",
+      constraint: true,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 10 }],
+    });
+    const { created } = await core.driftScan(".", {
+      hunks: [
+        {
+          path: "src/auth.ts",
+          lineStart: 1,
+          lineEnd: 1,
+          oldLines: "",
+          newLines: "const passwordHash = hash(password);",
+          hunkHeader: "@@ -0,0 +1,1 @@",
+        },
+      ],
+      semantic: false,
+    });
+    const catchQuestion = created[0];
+    if (!catchQuestion) throw new Error("expected a drift catch");
+
+    const accepted = (await call("accept_catch", {
+      questionId: catchQuestion.id,
+      resolution: "reverted the code",
+    })) as { question: { status: string }; next: string };
+    expect(accepted.question.status).toBe("open");
+    expect(accepted.next).toContain("marrow accept");
+    // the store agrees: no MCP tool writes any status.
+    expect((await core.getNode(catchQuestion.id))?.status).toBe("open");
+
+    const dismissed = (await call("dismiss_catch", {
+      questionId: catchQuestion.id,
+      reason: "test scaffold, not drift",
+    })) as { question: { status: string }; next: string };
+    expect(dismissed.question.status).toBe("open");
+    expect(dismissed.next).toContain("marrow dismiss");
+    expect((await core.getNode(catchQuestion.id))?.status).toBe("open");
+  });
+
   it("append_evidence redacts credential-shaped spans before storage and reports it", async () => {
     const result = (await call("append_evidence", {
       text: "deploy note: export MARROW token sk-proj-abc123DEF456ghi789 rotated today",

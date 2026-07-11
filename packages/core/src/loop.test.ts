@@ -501,6 +501,56 @@ describe("agent decision gate and truth maintenance", () => {
     expect(brief.sourceOfTruth.decidedGoals[0]?.provenance[0]?.source).toBeDefined();
   });
 
+  it("recordCatchResolution records the agent's reaction and NEVER touches the question", async () => {
+    await seedPasswordTruth();
+    const { created } = await core.driftScan(".", {
+      hunks: [hunk("src/auth.ts", "const passwordHash = hash(password);", 12)],
+      semantic: false,
+    });
+    const catchQuestion = created[0];
+    if (!catchQuestion) throw new Error("expected a drift catch");
+
+    const record = await core.recordCatchResolution(
+      catchQuestion.id,
+      "reverted the password change",
+      "acted_on",
+    );
+    expect(record.question.status).toBe("open");
+    expect(record.next).toContain("marrow accept");
+    // the question is still open in the store: recording is not deciding.
+    expect((await store.getQuestion(catchQuestion.id))?.status).toBe("open");
+
+    // the agent's reaction clears the pending list (someone reacted)...
+    const brief = await core.maintainTruth();
+    expect(brief.pendingCatches.every((c) => c.id !== catchQuestion.id)).toBe(true);
+
+    // ...but never pollutes the human-labeled metrics.
+    const metrics = await store.getCatchMetrics({});
+    expect(metrics.actedOn).toBe(0);
+
+    // the human can still close it through the CLI path, which promotes.
+    const closed = await core.acceptCatch(catchQuestion.id, "confirmed the revert");
+    expect(closed.status).toBe("decided");
+    const after = await store.getCatchMetrics({});
+    expect(after.actedOn).toBe(1);
+  });
+
+  it("recordCatchResolution guards like accept/dismiss: drift-only, open-only, decided-related", async () => {
+    await expect(core.recordCatchResolution("q_missing", "text", "acted_on")).rejects.toThrow(
+      /not found/,
+    );
+    const ev = await store.insertEvidence({ text: "plain question", source: "room/q.md" });
+    const plain = await store.insertQuestion({
+      prompt: "not a drift catch",
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 5 }],
+    });
+    await expect(core.recordCatchResolution(plain.id, "text", "dismissed")).rejects.toThrow(
+      /not a drift catch/,
+    );
+  });
+
   it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
     // a session-end hook write: evidence appended, never distilled.
     await store.insertEvidence({
