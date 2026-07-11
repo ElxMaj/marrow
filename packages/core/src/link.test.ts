@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { Marrow } from "./marrow.js";
+import { isFactStale, Marrow } from "./marrow.js";
 import {
   type EmbeddingProvider,
   type EmbeddingResult,
@@ -356,6 +356,50 @@ describe("edge extraction (the knowledge graph)", () => {
     expect(supersedes?.source).toBe("human");
     expect((await core.getDecision(d2.id))?.status).toBe("decided");
     expect((await core.getDecision(d1.id))?.status).toBe("superseded");
+  });
+});
+
+describe("freshness surfacing", () => {
+  it("isFactStale: only decided facts age out, and an expiry always counts", () => {
+    const now = new Date("2026-07-01T00:00:00.000Z").getTime();
+    const updatedAt = "2026-01-01T00:00:00.000Z";
+    // an open fact is never "stale", however old
+    expect(isFactStale({ status: "open", updatedAt: "2000-01-01T00:00:00.000Z" }, 365, now)).toBe(
+      false,
+    );
+    // decided and verified recently -> fresh
+    expect(
+      isFactStale(
+        { status: "decided", verifiedAt: "2026-06-01T00:00:00.000Z", updatedAt },
+        365,
+        now,
+      ),
+    ).toBe(false);
+    // decided and verified long ago -> stale
+    expect(
+      isFactStale(
+        { status: "decided", verifiedAt: "2024-01-01T00:00:00.000Z", updatedAt },
+        365,
+        now,
+      ),
+    ).toBe(true);
+    // an expiry in the past is stale regardless of status
+    expect(
+      isFactStale({ status: "open", expiresAt: "2026-06-01T00:00:00.000Z", updatedAt }, 365, now),
+    ).toBe(true);
+  });
+
+  it("traceToSource carries the source date on every span", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/date.md" });
+    const ent = await store.insertEntity({
+      name: "Auth",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    const trace = await core.traceToSource(ent.id);
+    expect(trace.spans[0]?.createdAt).toBeDefined();
+    expect(new Date(trace.spans[0]?.createdAt ?? "").toString()).not.toBe("Invalid Date");
   });
 });
 
