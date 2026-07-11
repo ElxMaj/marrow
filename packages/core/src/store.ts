@@ -757,6 +757,9 @@ export class Store {
     if (filter.excludeSynthetic) {
       conditions.push(`synthetic = false`);
     }
+    // the metric is human-labeled precision: an agent recording its own
+    // reaction (trigger 'agent') is a signal, not a label, so it never counts.
+    conditions.push(`coalesce(trigger, '') <> 'agent'`);
     const where = conditions.length > 0 ? `where ${conditions.join(" and ")}` : "";
     const res = await this.pool.query<{
       event_type: string;

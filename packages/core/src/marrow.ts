@@ -1483,6 +1483,69 @@ export class Marrow {
     return { created, events };
   }
 
+  /** Shared guard for every catch resolution path: the question must exist, be
+   *  open, be a drift catch, and relate to a decided decision. */
+  private async validateCatchQuestion(
+    questionId: string,
+    verb: string,
+  ): Promise<{ question: Question; decisionId: string }> {
+    const question = await this.store.getQuestion(questionId);
+    if (!question) throw new Error(`${verb}: question ${questionId} not found`);
+    if (question.status !== "open") {
+      throw new Error(`${verb}: question ${questionId} is ${question.status}, not open`);
+    }
+    if (!/^drift:/i.test(question.prompt)) {
+      throw new Error(`${verb}: question ${questionId} is not a drift catch`);
+    }
+    let decisionId: string | undefined;
+    for (const id of question.relatesTo ?? []) {
+      const node = await this.store.getNode(id);
+      if (node?.kind === "decision") {
+        decisionId = id;
+        if (node.status === "decided") {
+          return { question, decisionId };
+        }
+      }
+    }
+    void decisionId;
+    throw new Error(`${verb}: question ${questionId} does not relate to a decided decision`);
+  }
+
+  /**
+   * The agent-facing acknowledgment of a drift catch. Records what the agent
+   * did (or why it thinks the catch is noise) as append-only evidence plus a
+   * catch event with trigger 'agent', but NEVER changes the question's status:
+   * recording is not deciding. Closing the question stays a human act through
+   * the CLI (marrow accept / marrow dismiss). This is what keeps an
+   * instruction embedded in retrieved evidence from silencing a drift alarm
+   * with a human-confident stamp.
+   */
+  async recordCatchResolution(
+    questionId: string,
+    text: string,
+    verdict: "acted_on" | "dismissed",
+  ): Promise<{ question: Question; next: string }> {
+    if (!text || text.trim().length === 0) {
+      throw new Error("record: a resolution text is required");
+    }
+    const verb = verdict === "acted_on" ? "accept" : "dismiss";
+    const { question, decisionId } = await this.validateCatchQuestion(questionId, verb);
+    await this.store.insertEvidence({
+      text,
+      source: `${verdict === "acted_on" ? "resolutions" : "dismissals"}/${questionId}`,
+    });
+    await this.store.insertCatchEvent({
+      eventType: verdict === "acted_on" ? "catch_acted_on" : "catch_dismissed",
+      questionId,
+      decisionId,
+      trigger: "agent",
+    });
+    return {
+      question,
+      next: `marrow ${verb} ${questionId} ${verdict === "acted_on" ? "--text" : "--reason"} "..." closes the question (a human act).`,
+    };
+  }
+
   /**
    * Accept a surfaced catch: the human acted on it. Records the resolution as
    * answer-style evidence, marks the question decided (the contradiction has been
@@ -1493,30 +1556,7 @@ export class Marrow {
     if (!resolution || resolution.trim().length === 0) {
       throw new Error("accept: a resolution is required");
     }
-    const question = await this.store.getQuestion(questionId);
-    if (!question) throw new Error(`accept: question ${questionId} not found`);
-    if (question.status !== "open") {
-      throw new Error(`accept: question ${questionId} is ${question.status}, not open`);
-    }
-    if (!/^drift:/i.test(question.prompt)) {
-      throw new Error(`accept: question ${questionId} is not a drift catch`);
-    }
-
-    let relatesToDecided = false;
-    let decisionId: string | undefined;
-    for (const id of question.relatesTo ?? []) {
-      const node = await this.store.getNode(id);
-      if (node?.kind === "decision") {
-        decisionId = id;
-        if (node.status === "decided") {
-          relatesToDecided = true;
-          break;
-        }
-      }
-    }
-    if (!relatesToDecided) {
-      throw new Error(`accept: question ${questionId} does not relate to a decided decision`);
-    }
+    const { decisionId } = await this.validateCatchQuestion(questionId, "accept");
 
     const evidence = await this.store.insertEvidence({
       text: resolution,
@@ -1528,7 +1568,7 @@ export class Marrow {
     await this.store.insertCatchEvent({
       eventType: "catch_acted_on",
       questionId,
-      decisionId: decisionId!,
+      decisionId,
       trigger: "manual",
     });
 
@@ -1546,30 +1586,7 @@ export class Marrow {
     if (!reason || reason.trim().length === 0) {
       throw new Error("dismiss: a reason is required");
     }
-    const question = await this.store.getQuestion(questionId);
-    if (!question) throw new Error(`dismiss: question ${questionId} not found`);
-    if (question.status !== "open") {
-      throw new Error(`dismiss: question ${questionId} is ${question.status}, not open`);
-    }
-    if (!/^drift:/i.test(question.prompt)) {
-      throw new Error(`dismiss: question ${questionId} is not a drift catch`);
-    }
-
-    let relatesToDecided = false;
-    let decisionId: string | undefined;
-    for (const id of question.relatesTo ?? []) {
-      const node = await this.store.getNode(id);
-      if (node?.kind === "decision") {
-        decisionId = id;
-        if (node.status === "decided") {
-          relatesToDecided = true;
-          break;
-        }
-      }
-    }
-    if (!relatesToDecided) {
-      throw new Error(`dismiss: question ${questionId} does not relate to a decided decision`);
-    }
+    const { decisionId } = await this.validateCatchQuestion(questionId, "dismiss");
 
     const evidence = await this.store.insertEvidence({
       text: reason,
@@ -1581,7 +1598,7 @@ export class Marrow {
     await this.store.insertCatchEvent({
       eventType: "catch_dismissed",
       questionId,
-      decisionId: decisionId!,
+      decisionId,
       trigger: "manual",
     });
 
