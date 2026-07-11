@@ -124,7 +124,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate edge, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -252,6 +252,41 @@ describe("cli", () => {
     expect(rendered).toContain(`"${phrase}"`);
 
     await expect(runCommand(core, ["trace"])).rejects.toThrow(/Usage: marrow trace <nodeId>/);
+  });
+
+  it("neighbors renders the linked nodes and requires a node id", async () => {
+    const ev = await store.insertEvidence({ text: "checkout notes", source: "room/n.md" });
+    const provenance = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance,
+    });
+    const dec = await store.insertDecision({
+      title: "one-click checkout",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    await store.insertEdge({
+      fromId: ent.id,
+      fromKind: "entity",
+      toId: dec.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+
+    const rendered = formatResult(await runCommand(core, ["neighbors", ent.id]));
+    expect(rendered).toContain("Neighbors of checkout");
+    expect(rendered).toContain("one-click checkout");
+    expect(rendered).toContain("concerns");
+
+    await expect(runCommand(core, ["neighbors"])).rejects.toThrow(/Usage: marrow neighbors/);
   });
 
   it("rejects an unknown command", async () => {

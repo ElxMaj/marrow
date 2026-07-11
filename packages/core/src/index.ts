@@ -9,6 +9,8 @@ export {
   type TraceSpan,
   type TraceResult,
   type ProposeInput,
+  type NeighborLink,
+  type NeighborsBrief,
 } from "./marrow.js";
 export {
   Queue,
