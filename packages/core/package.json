@@ -15,7 +15,8 @@
     "migrations",
     "scripts/migrate.mjs",
     "fixtures/synthetic-golden.json",
-    "fixtures/write-golden.json"
+    "fixtures/write-golden.json",
+    "fixtures/temporal-golden.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
