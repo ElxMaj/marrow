@@ -7,10 +7,11 @@ import { READ_ONLY, getCore, sendJson } from "./_core.js";
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "GET") return sendJson(res, 405, { error: "method not allowed" });
   const core = getCore();
-  const [decisions, entities, questions] = await Promise.all([
+  const [decisions, entities, questions, graph] = await Promise.all([
     core.getDecisions(),
     core.listEntities(),
     core.getOpenQuestions(),
+    core.getGraph(),
   ]);
-  sendJson(res, 200, { decisions, entities, questions, readOnly: READ_ONLY });
+  sendJson(res, 200, { decisions, entities, questions, graph, readOnly: READ_ONLY });
 }

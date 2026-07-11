@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { filterGraph } from "./views/Graph";
-import type { SandboxState } from "./ui";
+import { layoutGraph, type SandboxState } from "./ui";
 
 const confidence = { value: 0.8, source: "model" as const };
 const provenance = [{ evidenceId: "ev_graph", start: 0, end: 12 }];
@@ -76,5 +76,42 @@ describe("filterGraph", () => {
     const filtered = filterGraph(graphState(), "billing");
     expect(filtered.decisions).toEqual([]);
     expect(filtered.entities).toEqual([]);
+  });
+});
+
+describe("layoutGraph", () => {
+  const nodes = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+  const edges = [
+    { from: "a", to: "b" },
+    { from: "b", to: "c" },
+  ];
+
+  it("is deterministic: the same graph lays out identically every time", () => {
+    const one = layoutGraph(nodes, edges);
+    const two = layoutGraph(nodes, edges);
+    expect([...one.entries()]).toEqual([...two.entries()]);
+  });
+
+  it("places every node inside the frame", () => {
+    const pos = layoutGraph(nodes, edges, { width: 1000, height: 1000 });
+    expect(pos.size).toBe(4);
+    for (const p of pos.values()) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(1000);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  it("handles empty and single-node graphs", () => {
+    expect(layoutGraph([], []).size).toBe(0);
+    const solo = layoutGraph([{ id: "solo" }], []);
+    expect(solo.size).toBe(1);
+    expect(solo.get("solo")).toEqual({ x: 500, y: 500 });
+  });
+
+  it("ignores edges that point at missing nodes without throwing", () => {
+    const pos = layoutGraph(nodes, [{ from: "a", to: "ghost" }]);
+    expect(pos.size).toBe(4);
   });
 });

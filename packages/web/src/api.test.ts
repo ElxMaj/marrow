@@ -82,6 +82,14 @@ describe("web api", () => {
     expect(state.entities[0]?.status).toBeDefined();
     expect(state.entities[0]?.provenance.length).toBeGreaterThan(0);
     expect(state.questions.length).toBeGreaterThan(0);
+    // the console map data: nodes (with degree) and the edges among them, titles only
+    expect(state.graph.nodes.length).toBeGreaterThan(0);
+    expect(state.graph.nodes[0]?.degree).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(state.graph.edges)).toBe(true);
+    for (const edge of state.graph.edges) {
+      expect(state.graph.nodes.some((n) => n.id === edge.from)).toBe(true);
+      expect(state.graph.nodes.some((n) => n.id === edge.to)).toBe(true);
+    }
   });
 
   it("answering through the web promotes the node, exactly like the cli", async () => {

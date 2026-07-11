@@ -2999,3 +2999,206 @@ h2 {
     transition: none;
   }
 }
+
+/* --- The living map (graph view) --------------------------------------------
+   A dependency-free node-link galaxy. Colors come from the status tokens so a
+   dot reads decided-vs-open at a glance, gold stays the one spark (active + hover
+   focus). The layout is computed in ui.ts; this only paints it. */
+.graph-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+.mode-btn:hover {
+  color: var(--ink);
+}
+.mode-btn.on {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.mode-btn:active {
+  transform: scale(0.97);
+}
+
+.map-wrap {
+  position: relative;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--gold-wash), transparent 60%), var(--surface);
+  overflow: hidden;
+}
+.map-svg {
+  display: block;
+  width: 100%;
+  height: min(72vh, 720px);
+  cursor: grab;
+  touch-action: none;
+  animation: map-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.map-svg:active {
+  cursor: grabbing;
+}
+@keyframes map-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.map-edge {
+  stroke: var(--line-strong);
+  stroke-width: 1.1;
+  opacity: 0.6;
+}
+.map-node {
+  cursor: pointer;
+  outline: none;
+}
+.map-dot {
+  fill: var(--superseded);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  transition:
+    stroke 140ms ease,
+    filter 140ms ease;
+}
+.map-node.status-decided .map-dot {
+  fill: var(--decided);
+}
+.map-node.status-open .map-dot {
+  fill: var(--open);
+}
+.map-node.status-contested .map-dot {
+  fill: var(--contested);
+}
+.map-node.status-superseded .map-dot,
+.map-node.status-dismissed .map-dot {
+  fill: var(--superseded);
+}
+.map-node.dim {
+  opacity: 0.22;
+}
+.map-node:hover .map-dot,
+.map-node:focus-visible .map-dot {
+  stroke: var(--gold-500);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px var(--gold-wash));
+}
+.map-node.active .map-dot {
+  stroke: var(--gold-500);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px var(--gold-border));
+}
+.map-label {
+  fill: var(--ink-muted);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+}
+.map-node:hover .map-label,
+.map-node.active .map-label {
+  fill: var(--ink);
+}
+
+.map-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.map-btn {
+  appearance: none;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+.map-btn:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.map-btn:active {
+  transform: scale(0.96);
+}
+
+.map-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.map-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-legend li::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--superseded);
+}
+.map-legend li.status-decided::before {
+  background: var(--decided);
+}
+.map-legend li.status-open::before {
+  background: var(--open);
+}
+.map-legend li.status-contested::before {
+  background: var(--contested);
+}
+.map-legend li.status-superseded::before {
+  background: var(--superseded);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-svg {
+    animation: none;
+  }
+}
