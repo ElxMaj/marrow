@@ -645,7 +645,9 @@ export class Marrow {
       );
       if (canonical) {
         await this.store.addProvenance(canonical.id, "entity", node.provenance);
-        await this.store.deleteEntity(node.id);
+        // the canonical inherits the duplicate's edges and verifications, so
+        // the merge never erodes graph connectivity.
+        await this.store.deleteEntity(node.id, canonical.id);
       }
     }
 

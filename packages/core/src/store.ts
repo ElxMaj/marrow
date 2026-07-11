@@ -1050,9 +1050,14 @@ export class Store {
   }
 
   /** Remove a duplicate distilled entity after its provenance has been merged
-   *  into the canonical node. distilled nodes are mergeable; evidence is not. */
-  async deleteEntity(entityId: string): Promise<void> {
+   *  into the canonical node. distilled nodes are mergeable; evidence is not.
+   *  With a canonicalId, the duplicate's edges and verifications are re-pointed
+   *  to the canonical node first (deduped against edge_unique, self-loops
+   *  dropped), so a merge never erodes the connectivity walked retrieval
+   *  depends on. Without one, they are removed, so nothing dangles. */
+  async deleteEntity(entityId: string, canonicalId?: string): Promise<void> {
     await this.tx(async (client) => {
+      await this.reassignAdvisoryRows(client, entityId, "entity", canonicalId);
       await client.query("delete from embedding where node_id = $1 and node_kind = 'entity'", [
         entityId,
       ]);
@@ -1061,6 +1066,47 @@ export class Store {
       ]);
       await client.query("delete from entity where id = $1", [entityId]);
     });
+  }
+
+  /** Re-point (or remove) the advisory rows hanging off a node about to be
+   *  deleted: edges and verifications. Kind-agnostic on purpose, so any future
+   *  merge path (decisions, goals) completes its deletes the same way. Edges
+   *  that would duplicate an existing canonical edge drop via edge_unique, and
+   *  re-pointing never creates a self-loop. */
+  private async reassignAdvisoryRows(
+    client: pg.PoolClient,
+    nodeId: string,
+    nodeKind: EdgeNodeKind,
+    canonicalId?: string,
+  ): Promise<void> {
+    if (canonicalId !== undefined) {
+      await client.query(
+        `update edge set from_id = $2, from_kind = $3
+          where from_id = $1 and to_id <> $2
+            and not exists (
+              select 1 from edge e2
+               where e2.from_id = $2 and e2.to_id = edge.to_id and e2.relation = edge.relation)`,
+        [nodeId, canonicalId, nodeKind],
+      );
+      await client.query(
+        `update edge set to_id = $2, to_kind = $3
+          where to_id = $1 and from_id <> $2
+            and not exists (
+              select 1 from edge e2
+               where e2.from_id = edge.from_id and e2.to_id = $2 and e2.relation = edge.relation)`,
+        [nodeId, canonicalId, nodeKind],
+      );
+      await client.query("update verification set node_id = $2 where node_id = $1", [
+        nodeId,
+        canonicalId,
+      ]);
+    }
+    // whatever still points at the node (un-repointable duplicates, self-loop
+    // candidates, or everything when there is no canonical) goes with it.
+    await client.query("delete from edge where from_id = $1 or to_id = $1", [nodeId]);
+    if (canonicalId === undefined) {
+      await client.query("delete from verification where node_id = $1", [nodeId]);
+    }
   }
 
   /** Bounded text search across all node kinds. Never returns the whole

@@ -473,6 +473,53 @@ describe("lint (graph hygiene)", () => {
   });
 });
 
+describe("dedupe keeps the graph connected", () => {
+  it("lint reports zero dead edges after an entity merge re-points connectivity", async () => {
+    const ev = await store.insertEvidence({
+      text: "the billing portal owns invoices",
+      source: "room/merge-lint.md",
+    });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 10 }];
+    const confidence = { value: 0.6, source: "model" as const };
+    const canonical = await store.insertEntity({
+      name: "billing portal",
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    const dupe = await store.insertEntity({
+      name: "Billing  Portal",
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    const decision = await store.insertDecision({
+      title: "invoices are immutable after send",
+      rationale: "",
+      constraint: true,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    await store.insertEdge({
+      fromId: dupe.id,
+      fromKind: "entity",
+      toId: decision.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+
+    await store.deleteEntity(dupe.id, canonical.id);
+
+    const report = await core.lint();
+    expect(report.counts.deadEdges).toBe(0);
+    // the canonical node inherited the connectivity the walk depends on.
+    expect((await store.edgesFor(canonical.id)).length).toBe(1);
+  });
+});
+
 describe("synthesize (weekly digest)", () => {
   it("synthHeadline summarizes the window counts in plain language", () => {
     const line = synthHeadline({
