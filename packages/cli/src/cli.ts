@@ -1017,19 +1017,32 @@ export function formatResult(result: unknown): string {
       marrow: {
         avgTokens: number;
         avgLatencyMs: number;
-        questions: { question: string; tokens: number; latencyMs: number }[];
+        questions: { question: string; tokens: number; latencyMs: number; results: number }[];
       };
       ratio: number;
     };
+    const totalResults = report.marrow.questions.reduce((s, q) => s + q.results, 0);
     const lines = [
       `Tokenizer: ${report.tokenizer}`,
       `Baseline docs: ${report.baseline.docs} tokens: ${report.baseline.tokens}`,
       `Marrow avg tokens: ${report.marrow.avgTokens} avg latency: ${report.marrow.avgLatencyMs}ms`,
-      `Token reduction ratio: ${report.ratio}x`,
+    ];
+    if (totalResults === 0) {
+      // retrieval found nothing, so the ratio is not a real reduction (a slice
+      // of nothing is trivially smaller than the corpus). This happens when the
+      // corpus never distilled into searchable content, e.g. no model is set.
+      lines.push(
+        "Token reduction ratio: n/a (retrieval returned no results)",
+        "Set a model (MARROW_API_KEY, or MARROW_PROVIDER for a local LLM) so the corpus distills and the slice is measured against a real brain.",
+      );
+    } else {
+      lines.push(`Token reduction ratio: ${report.ratio}x`);
+    }
+    lines.push(
       ...report.marrow.questions.map(
         (q) => `  ${q.question}: ${q.tokens} tokens (${q.latencyMs}ms)`,
       ),
-    ];
+    );
     return lines.join("\n");
   }
 
