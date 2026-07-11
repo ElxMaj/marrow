@@ -17,10 +17,13 @@ export {
   type VerifyReport,
   type LintIssue,
   type LintReport,
+  type SynthItem,
+  type SynthReport,
   isFactStale,
 } from "./marrow.js";
 export { skepticReasons, verdictFor, type VerifyReason, type VerifyVerdict } from "./skeptic.js";
 export { findDuplicateTitles } from "./lint.js";
+export { synthHeadline, type SynthCounts } from "./synthesize.js";
 export {
   Queue,
   DISTILL_QUEUE,

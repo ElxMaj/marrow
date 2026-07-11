@@ -39,6 +39,7 @@ const flagValue = (args: string[], name: string): string | undefined => {
 const VALUE_FLAGS = new Set([
   "--audio",
   "--confidence",
+  "--days",
   "--debounce",
   "--decide",
   "--description",
@@ -244,6 +245,7 @@ Bootstrap / maintain:
   truth                       Show the product truth maintenance brief
   verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
   lint                        Sweep the graph for duplicates, contradictions, and dead edges
+  synthesize [--days N]       What changed and what deserves attention over a window (default 7d)
   init [repoPath]             One-time repo onboarding scan (asks, never asserts)
   drift [repoPath] [--staged|--unstaged|--since <ref>] [--no-semantic] [--ci]
                               Flag code that diverged from a decided fact
@@ -438,6 +440,11 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
 
     case "lint":
       return core.lint();
+
+    case "synthesize": {
+      const daysRaw = flagValue(rest, "--days");
+      return core.synthesize(daysRaw ? Number(daysRaw) : 7);
+    }
 
     case "add": {
       const file = positional(rest);
@@ -1031,6 +1038,31 @@ export function formatResult(result: unknown): string {
     return [
       `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge`,
       ...lines,
+    ].join("\n");
+  }
+
+  // synthesize: the "what changed and what deserves attention" digest.
+  if ("headline" in r && "changed" in r && Array.isArray(r.changed)) {
+    const rep = r as {
+      windowDays: number;
+      headline: string;
+      newlyDecided: { kind: string; title: string; status: string }[];
+      contested: { kind: string; title: string; status: string }[];
+      staleDecided: { kind: string; title: string; status: string }[];
+    };
+    const section = (
+      label: string,
+      items: { kind: string; title: string; status: string }[],
+    ): string[] =>
+      items.length === 0
+        ? []
+        : ["", label, ...items.map((i) => `  [${colorStatus(i.status)}] ${i.kind}: ${i.title}`)];
+    return [
+      `Synthesis, last ${rep.windowDays} day${rep.windowDays === 1 ? "" : "s"}`,
+      rep.headline,
+      ...section("Newly decided", rep.newlyDecided),
+      ...section("Contested", rep.contested),
+      ...section("Stale, reverify", rep.staleDecided),
     ].join("\n");
   }
 

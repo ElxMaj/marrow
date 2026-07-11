@@ -55,6 +55,7 @@ import {
 } from "./providers/types.js";
 import { findDuplicateTitles } from "./lint.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
+import { type SynthCounts, synthHeadline } from "./synthesize.js";
 import { skepticReasons, type VerifyReason, verdictFor } from "./skeptic.js";
 import { type IndexEntry, type RunFilter, Store, createStore } from "./store.js";
 
@@ -273,6 +274,26 @@ export interface LintIssue {
 export interface LintReport {
   issues: LintIssue[];
   counts: { duplicateNodes: number; contradictions: number; deadEdges: number };
+}
+
+/** One fact in a synthesis digest. */
+export interface SynthItem {
+  id: string;
+  kind: Distilled["kind"];
+  title: string;
+  status: Status;
+}
+
+/** A read-only synthesis digest over a window: what changed and what deserves attention. */
+export interface SynthReport {
+  windowDays: number;
+  headline: string;
+  changed: SynthItem[];
+  newlyDecided: SynthItem[];
+  contested: SynthItem[];
+  staleDecided: SynthItem[];
+  openQuestions: number;
+  driftCatches: number;
 }
 
 /** One edge in the console graph, endpoints as bare node ids. */
@@ -1768,6 +1789,57 @@ export class Marrow {
         contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
         deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
       },
+    };
+  }
+
+  /**
+   * A read-only synthesis digest over a window (default 7 days): what facts
+   * changed, what was newly decided, what is contested, which decided facts are
+   * stale, how many drift catches surfaced, and how many questions are open. It
+   * is the weekly "what changed and what deserves attention" pass, and it writes
+   * nothing.
+   */
+  async synthesize(windowDays = 7): Promise<SynthReport> {
+    const sinceMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+    const [decisions, goals, questions, catches] = await Promise.all([
+      this.store.listDecisions(),
+      this.store.listGoals(),
+      this.getOpenQuestions(),
+      this.store.listCatchEvents({ eventType: "catch_surfaced" }),
+    ]);
+    const nodes: Distilled[] = [...decisions, ...goals];
+    const inWindow = (iso: string): boolean => new Date(iso).getTime() >= sinceMs;
+    const item = (node: Distilled): SynthItem => ({
+      id: node.id,
+      kind: node.kind,
+      title: nodeTitle(node),
+      status: node.status,
+    });
+    const changed = nodes.filter((node) => inWindow(node.updatedAt)).map(item);
+    const newlyDecided = nodes
+      .filter((node) => node.status === "decided" && inWindow(node.updatedAt))
+      .map(item);
+    const contested = nodes.filter((node) => node.status === "contested").map(item);
+    const staleDecided = nodes.filter((node) => isFactStale(node)).map(item);
+    const driftCatches = catches.filter((event) => inWindow(event.created_at)).length;
+    const counts: SynthCounts = {
+      windowDays,
+      changed: changed.length,
+      newlyDecided: newlyDecided.length,
+      contested: contested.length,
+      driftCatches,
+      staleDecided: staleDecided.length,
+      openQuestions: questions.length,
+    };
+    return {
+      windowDays,
+      headline: synthHeadline(counts),
+      changed,
+      newlyDecided,
+      contested,
+      staleDecided,
+      openQuestions: questions.length,
+      driftCatches,
     };
   }
 
