@@ -95,6 +95,16 @@ export interface Neighbor {
   depth: number;
 }
 
+/** One front-door index row: a node as id, kind, one-line title, status, and how
+ *  connected it is. Titles only, never bodies or provenance. */
+export interface IndexEntry {
+  id: string;
+  kind: EdgeNodeKind;
+  title: string;
+  status: Status;
+  degree: number;
+}
+
 export interface EmbeddingInput {
   nodeId: string;
   nodeKind?: "entity" | "decision" | "question" | "goal" | "evidence";
@@ -1182,6 +1192,49 @@ export class Store {
   async listEdges(limit = 500): Promise<Edge[]> {
     const res = await this.pool.query<EdgeRow>(`${EDGE_SELECT} order by id limit $1`, [limit]);
     return res.rows.map(edgeFromRow);
+  }
+
+  /** A bounded front-door index: every node as id, kind, one-line title, status,
+   *  and its degree (how connected it is), the hubs first. Titles only, never
+   *  bodies or provenance, so this shows what exists without being the whole
+   *  brain. */
+  async listIndex(limit = 200): Promise<IndexEntry[]> {
+    const res = await this.pool.query<{
+      id: string;
+      kind: string;
+      title: string;
+      status: string;
+      degree: string | number;
+    }>(
+      `select id, kind, title, status, degree from (
+         select e.id, 'entity' as kind, e.name as title, e.status,
+           (select count(*) from edge g where g.from_id = e.id or g.to_id = e.id) as degree,
+           e.updated_at as updated_at
+           from entity e
+         union all
+         select d.id, 'decision', d.title, d.status,
+           (select count(*) from edge g where g.from_id = d.id or g.to_id = d.id), d.updated_at
+           from decision d
+         union all
+         select q.id, 'question', q.prompt, q.status,
+           (select count(*) from edge g where g.from_id = q.id or g.to_id = q.id), q.updated_at
+           from question q
+         union all
+         select gl.id, 'goal', gl.title, gl.status,
+           (select count(*) from edge g where g.from_id = gl.id or g.to_id = gl.id), gl.updated_at
+           from goal gl
+       ) t
+       order by degree desc, updated_at desc
+       limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      kind: row.kind as EdgeNodeKind,
+      title: row.title,
+      status: row.status as Status,
+      degree: Number(row.degree),
+    }));
   }
 
   // --- observability: append-only run trace ---------------------------------

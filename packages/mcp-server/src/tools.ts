@@ -134,6 +134,21 @@ export function createTools(core: Marrow): ToolDef[] {
       },
     },
     {
+      name: "get_index",
+      description:
+        "The front door: a bounded list of every node (id, kind, one-line title, status) and how connected each is, the hubs first. Use it to see what exists before searching. Titles only, never bodies or provenance, and never the whole brain content.",
+      inputSchema: {
+        type: "object",
+        properties: { limit: { type: "number", description: "max entries (default 200)" } },
+      },
+      handler: async (args) => {
+        const { limit } = z
+          .object({ limit: z.number().int().min(1).max(500).default(200) })
+          .parse(args);
+        return { index: await core.getIndex(limit) };
+      },
+    },
+    {
       name: "prepare_task",
       description:
         "Prepare the compact task brief an agent should read before building: relevant decided goals and decisions, open or contested questions, exact provenance spans, safe-to-build vs ask-human-first sections, and optional drift check receipts. Never returns the whole brain.",

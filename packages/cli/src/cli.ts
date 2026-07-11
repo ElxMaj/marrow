@@ -221,6 +221,7 @@ Read the room (task-scoped; every result carries status + provenance):
   entity <idOrName>           One entity with its status and provenance
   trace <nodeId>              The exact source span(s) a fact came from
   neighbors <id> [--hops N]   Nodes linked to this one in the knowledge graph
+  map [--limit N]             The front door: every node, most connected first
 
 Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   ingest <path> [--source S]  Ingest a file, a whole folder, or stdin (distills by default)
@@ -401,6 +402,11 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       if (!nodeId) throw new Error("Usage: marrow neighbors <nodeId> [--hops 1|2]");
       const hopsRaw = flagValue(rest, "--hops");
       return core.getNeighbors(nodeId, hopsRaw ? Number(hopsRaw) : 1);
+    }
+
+    case "map": {
+      const limitRaw = flagValue(rest, "--limit");
+      return { index: await core.getIndex(limitRaw ? Number(limitRaw) : 200) };
     }
 
     case "loop": {
@@ -951,6 +957,28 @@ export function formatResult(result: unknown): string {
       return `  [${colorStatus(nb.status)}] ${nb.kind}: ${nb.title}${rel}${conf} · ${hop} · ${nb.id}`;
     });
     return [head, ...lines].join("\n");
+  }
+
+  // map: the front-door index, every node with its degree, most connected first.
+  if ("index" in r && Array.isArray(r.index)) {
+    const entries = r.index as {
+      id: string;
+      kind: string;
+      title: string;
+      status: string;
+      degree: number;
+    }[];
+    if (entries.length === 0) {
+      return "(The brain is empty. Ingest the room with `marrow add <file>` or `marrow demo`.)";
+    }
+    const lines = entries.map((e) => {
+      const links = `${e.degree} link${e.degree === 1 ? "" : "s"}`;
+      return `  [${colorStatus(e.status)}] ${e.kind}: ${e.title}  ${dim(`· ${links} · ${e.id}`)}`;
+    });
+    return [
+      `Index: ${entries.length} node${entries.length === 1 ? "" : "s"}, most connected first`,
+      ...lines,
+    ].join("\n");
   }
 
   // ingest / import: one or many evidence rows, each with what it distilled.

@@ -289,6 +289,39 @@ describe("cli", () => {
     await expect(runCommand(core, ["neighbors"])).rejects.toThrow(/Usage: marrow neighbors/);
   });
 
+  it("map renders the front-door index with degrees, most connected first", async () => {
+    const ev = await store.insertEvidence({ text: "checkout notes", source: "room/m.md" });
+    const provenance = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance,
+    });
+    const dec = await store.insertDecision({
+      title: "one-click checkout",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    await store.insertEdge({
+      fromId: ent.id,
+      fromKind: "entity",
+      toId: dec.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+
+    const rendered = formatResult(await runCommand(core, ["map"]));
+    expect(rendered).toContain("most connected first");
+    expect(rendered).toContain("checkout");
+    expect(rendered).toMatch(/link/);
+  });
+
   it("rejects an unknown command", async () => {
     await expect(runCommand(core, ["frobnicate"])).rejects.toThrow(/Unknown command/);
   });
