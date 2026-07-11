@@ -248,7 +248,7 @@ describe("cli", () => {
 
     const result = await runCommand(core, ["trace", decision.id]);
     const rendered = formatResult(result);
-    expect(rendered).toContain("Source: interviews/trace.md");
+    expect(rendered).toContain("Source (verbatim record): interviews/trace.md");
     expect(rendered).toContain(`"${phrase}"`);
 
     await expect(runCommand(core, ["trace"])).rejects.toThrow(/Usage: marrow trace <nodeId>/);
