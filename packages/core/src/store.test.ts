@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { Store, createStore } from "./store.js";
+import { Store, createStore, type EdgeDraft } from "./store.js";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://marrow:marrow@localhost:5432/marrow";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +34,7 @@ beforeEach(async () => {
   // even here, which is why every test inserts the evidence it needs. the Store
   // exposes no evidence update or delete path at all.
   await admin.query(
-    "truncate catch_events, provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -581,5 +581,166 @@ describe("Store goals", () => {
       decidedUser.id,
     ]);
     expect((await store.getOpenGoals()).map((g) => g.id)).toEqual([openProduct.id]);
+  });
+});
+
+describe("Store edges (the knowledge graph)", () => {
+  // small seeders: every distilled node needs an evidence span, so make one per
+  // node. spans are tiny (the note text is always longer than 3 chars).
+  async function ent(name: string) {
+    const ev = await store.insertEvidence({ text: `${name} note`, source: "room/x.md" });
+    return store.insertEntity({
+      name,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 3 }],
+    });
+  }
+  async function dec(title: string) {
+    const ev = await store.insertEvidence({ text: `${title} note`, source: "room/x.md" });
+    return store.insertDecision({
+      title,
+      rationale: "because",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 3 }],
+    });
+  }
+
+  it("insertEdge is idempotent on (from, to, relation)", async () => {
+    const a = await ent("Auth");
+    const d = await dec("Use passkeys");
+    const draft: EdgeDraft = {
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.8,
+      source: "rule",
+    };
+    await store.insertEdge(draft);
+    await store.insertEdge(draft); // a re-distill must not duplicate the same link
+    const edges = await store.edgesFor(a.id);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.relation).toBe("concerns");
+    expect(edges[0]?.fromId).toBe(a.id);
+    expect(edges[0]?.toId).toBe(d.id);
+    expect(edges[0]?.source).toBe("rule");
+    expect(edges[0]?.confidence).toBeCloseTo(0.8);
+  });
+
+  it("neighbors walks one and two hops and respects maxHops", async () => {
+    const a = await ent("Auth");
+    const d1 = await dec("Use passkeys");
+    const d2 = await dec("Drop SMS OTP");
+    // a -concerns-> d1 -refines-> d2, so from a: d1 is 1 hop, d2 is 2 hops.
+    await store.insertEdge({
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d1.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: d1.id,
+      fromKind: "decision",
+      toId: d2.id,
+      toKind: "decision",
+      relation: "refines",
+      confidence: 0.7,
+      source: "model",
+    });
+
+    const oneHop = await store.neighbors([a.id], ["entity"], 1);
+    expect(oneHop.map((n) => n.id)).toContain(d1.id);
+    expect(oneHop.map((n) => n.id)).not.toContain(d2.id);
+
+    const twoHop = await store.neighbors([a.id], ["entity"], 2);
+    expect(twoHop.map((n) => n.id)).toEqual(expect.arrayContaining([d1.id, d2.id]));
+    expect(twoHop.find((n) => n.id === d1.id)?.depth).toBe(1);
+    expect(twoHop.find((n) => n.id === d2.id)?.depth).toBe(2);
+    // seeds are never returned as their own neighbors
+    expect(twoHop.map((n) => n.id)).not.toContain(a.id);
+  });
+
+  it("neighbors walks edges in both directions", async () => {
+    const a = await ent("Auth");
+    const d = await dec("Use passkeys");
+    // edge points d -> a, but from seed a we still reach d by walking the to side.
+    await store.insertEdge({
+      fromId: d.id,
+      fromKind: "decision",
+      toId: a.id,
+      toKind: "entity",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    const nb = await store.neighbors([a.id], ["entity"], 1);
+    expect(nb.map((n) => n.id)).toContain(d.id);
+  });
+
+  it("neighbors returns nothing for empty seeds", async () => {
+    expect(await store.neighbors([], [])).toEqual([]);
+  });
+
+  it("degree and degrees count edges touching a node, including zero", async () => {
+    const a = await ent("Auth");
+    const d1 = await dec("Use passkeys");
+    const d2 = await dec("Drop SMS OTP");
+    await store.insertEdge({
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d1.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d2.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    expect(await store.degree(a.id)).toBe(2);
+    expect(await store.degree(d1.id)).toBe(1);
+    const map = await store.degrees([a.id, d1.id, "ent_missing"]);
+    expect(map.get(a.id)).toBe(2);
+    expect(map.get(d1.id)).toBe(1);
+    expect(map.get("ent_missing")).toBe(0);
+  });
+
+  it("listEdges returns a bounded slice of the graph", async () => {
+    const a = await ent("Auth");
+    const d1 = await dec("Use passkeys");
+    const d2 = await dec("Drop SMS OTP");
+    await store.insertEdge({
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d1.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: a.id,
+      fromKind: "entity",
+      toId: d2.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.9,
+      source: "rule",
+    });
+    expect(await store.listEdges()).toHaveLength(2);
+    expect(await store.listEdges(1)).toHaveLength(1);
   });
 });

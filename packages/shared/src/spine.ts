@@ -138,6 +138,67 @@ export const parseGoal = (input: unknown): Goal => GoalSchema.parse(input);
 export const parseNode = (input: unknown): Node => NodeSchema.parse(input);
 
 // ---------------------------------------------------------------------------
+// The knowledge graph edge. A distilled node can relate to another distilled
+// node, and those links are what let retrieval walk the web instead of only
+// searching it (a search index gets noisier as it grows; a linked graph gets
+// stronger). An edge is advisory structure, never a fact: it carries a
+// confidence and a source, never a status, and it never promotes a node.
+// Evidence is never a graph endpoint: it is the root of provenance, not part of
+// the distilled web.
+// ---------------------------------------------------------------------------
+
+/** The distilled kinds an edge can connect. Evidence is excluded on purpose. */
+export const EdgeNodeKindSchema = z.enum(["entity", "decision", "question", "goal"]);
+export type EdgeNodeKind = z.infer<typeof EdgeNodeKindSchema>;
+
+/** How an edge was asserted: a write-time rule, a model, or a human answer. */
+export const EdgeSourceSchema = z.enum(["rule", "model", "human"]);
+export type EdgeSource = z.infer<typeof EdgeSourceSchema>;
+
+/**
+ * The typed relations between two distilled nodes.
+ * - `concerns`: an entity is the subject of a decision.
+ * - `serves`: a goal serves the entity it is attached to.
+ * - `supersedes`: a decided node replaced this one when a conflict was answered.
+ * - `refines`: a decision narrows an earlier one without replacing it.
+ * - `conflicts_with`: two nodes disagree and a human has not settled it.
+ * - `relates_to`: a looser link, e.g. a question about a set of nodes.
+ */
+export const RelationSchema = z.enum([
+  "concerns",
+  "serves",
+  "supersedes",
+  "refines",
+  "conflicts_with",
+  "relates_to",
+]);
+export type Relation = z.infer<typeof RelationSchema>;
+
+/**
+ * One directed edge in the knowledge graph. `evidenceId` links it to the span
+ * that justifies it, when there is one (a merge-derived edge cites the node's own
+ * span). `id` is assigned by the store.
+ */
+export const EdgeSchema = z.object({
+  id: z.number().int().nonnegative(),
+  fromId: z.string().min(1),
+  fromKind: EdgeNodeKindSchema,
+  toId: z.string().min(1),
+  toKind: EdgeNodeKindSchema,
+  relation: RelationSchema,
+  confidence: z
+    .number()
+    .min(0, "confidence cannot be below 0")
+    .max(1, "confidence cannot be above 1"),
+  source: EdgeSourceSchema,
+  evidenceId: z.string().min(1).optional(),
+  createdAt: Iso,
+});
+export type Edge = z.infer<typeof EdgeSchema>;
+
+export const parseEdge = (input: unknown): Edge => EdgeSchema.parse(input);
+
+// ---------------------------------------------------------------------------
 // Observability and connector sync. a Run is an append-only trace of one
 // model, retrieval, drift, or connector operation, so the pipeline that turns
 // the room into product truth is measurable (latency, tokens, cost, errors) in
