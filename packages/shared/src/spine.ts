@@ -56,6 +56,11 @@ const distilledFields = {
   provenance: ProvenanceSchema,
   createdAt: Iso,
   updatedAt: Iso,
+  // Freshness. verifiedAt is stamped when a human promotes the fact; expiresAt is
+  // an optional TTL. Both optional: a fact that was never human-verified and one
+  // that does not expire simply omit them. Confidence is never decayed in place.
+  verifiedAt: Iso.optional(),
+  expiresAt: Iso.optional(),
 } as const;
 
 /**

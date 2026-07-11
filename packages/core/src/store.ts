@@ -255,6 +255,8 @@ interface DistilledRow {
   confidence_source: string;
   created_at: Date;
   updated_at: Date;
+  verified_at: Date | null;
+  expires_at: Date | null;
 }
 
 const toVectorLiteral = (vector: number[]): string => `[${vector.join(",")}]`;
@@ -533,7 +535,7 @@ export class Store {
     const res = await this.pool.query<
       DistilledRow & { title: string; rationale: string; is_constraint: boolean }
     >(
-      `select id, title, rationale, is_constraint, status, confidence_value, confidence_source, created_at, updated_at
+      `select id, title, rationale, is_constraint, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
        from decision where id = $1`,
       [id],
     );
@@ -552,7 +554,7 @@ export class Store {
 
   async getEntity(id: string): Promise<Entity | undefined> {
     const res = await this.pool.query<DistilledRow & { name: string; description: string | null }>(
-      `select id, name, description, status, confidence_value, confidence_source, created_at, updated_at
+      `select id, name, description, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
        from entity where id = $1`,
       [id],
     );
@@ -570,7 +572,7 @@ export class Store {
 
   async getQuestion(id: string): Promise<Question | undefined> {
     const res = await this.pool.query<DistilledRow & { prompt: string; relates_to: string[] }>(
-      `select id, prompt, relates_to, status, confidence_value, confidence_source, created_at, updated_at
+      `select id, prompt, relates_to, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
        from question where id = $1`,
       [id],
     );
@@ -595,7 +597,7 @@ export class Store {
         entity_id: string | null;
       }
     >(
-      `select id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, created_at, updated_at
+      `select id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
        from goal where id = $1`,
       [id],
     );
@@ -824,10 +826,19 @@ export class Store {
     span: ProvenanceSpan,
   ): Promise<void> {
     const table = tableForKind(nodeKind);
+    const now = new Date().toISOString();
+    // verified_at is the promotion timestamp: a human stood behind this, and when.
+    // expires_at is set only when a brain-level TTL is configured, so freshness is
+    // opt-in; confidence is never decayed in place.
+    const ttlDays = Number(process.env.MARROW_FACT_TTL_DAYS);
+    const expiresAt =
+      Number.isFinite(ttlDays) && ttlDays > 0
+        ? new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString()
+        : null;
     await this.tx(async (client) => {
       await client.query(
-        `update ${table} set status = 'decided', confidence_source = 'human', confidence_value = 1, updated_at = $2 where id = $1`,
-        [nodeId, new Date().toISOString()],
+        `update ${table} set status = 'decided', confidence_source = 'human', confidence_value = 1, updated_at = $2, verified_at = $2, expires_at = $3 where id = $1`,
+        [nodeId, now, expiresAt],
       );
       await this.insertProvenance(client, nodeId, nodeKind, [span]);
     });
@@ -1575,6 +1586,8 @@ export class Store {
     confidence: Confidence;
     createdAt: string;
     updatedAt: string;
+    verifiedAt?: string;
+    expiresAt?: string;
   } {
     return {
       status: row.status as Status,
@@ -1584,6 +1597,8 @@ export class Store {
       },
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),
+      ...(row.verified_at ? { verifiedAt: iso(row.verified_at) } : {}),
+      ...(row.expires_at ? { expiresAt: iso(row.expires_at) } : {}),
     };
   }
 
