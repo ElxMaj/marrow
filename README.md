@@ -87,6 +87,14 @@ Over MCP the same surfaces are `prepare_task` and `maintain_truth`, alongside ta
 
 For the copy-paste team ritual, see [docs/agent-workflow.md](./docs/agent-workflow.md) and [templates/AGENTS.marrow.md](./templates/AGENTS.marrow.md).
 
+## The context budget
+
+The context window is metered. Every token your agent loads is paid for on every run, and the tokens that never help still cost you. Two habits quietly drain a project: a standing instruction file that reloads in full every session, and dumping a whole knowledge base into the prompt so the model can hunt for the one fact it needs.
+
+Marrow is built the other way. Your agent instruction file stays short and points at Marrow instead of carrying the room inside it. Then, per task, the agent pulls only the slice it needs. `prepare_task` returns the decided and open facts relevant to that one task, each with provenance, and never the whole brain. The library stays on disk. Only the decisions enter the prompt.
+
+That saving is measured, not projected. `marrow benchmark` compares a full-context dump against the task-scoped slice on a synthetic golden set and reports the ratio, 2.5x fewer tokens today. See `packages/core/fixtures/synthetic-golden.json`.
+
 ## Stack
 
 - TypeScript everywhere, Node runtime.
@@ -175,6 +183,18 @@ After `@marrowhq/mcp-server` latest matches this repo, replace the final command
 Embeddings are zero-config (a local model runs in-process), so no embedding endpoint is required; set `MARROW_EMBEDDING_BASE_URL` only if you want to use your own. For Codex or any other MCP host, use the same command and env as an `mcpServers` entry.
 
 The agent then starts with `prepare_task` for its task brief and can call `maintain_truth` when a human wants the source of truth health. It still has `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity` and `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node`, and `check_drift` (shaped writes). `check_drift` scans the working repo against the room's decided facts and flags code that contradicts one as an open question, the code-time guardrail, so the agent does not build something the room decided against. It can never promote a node to decided; only a human answer does.
+
+### Wire it into a project
+
+Point any project at Marrow with three lines in its `CLAUDE.md`, `AGENTS.md`, or equivalent agent instruction file:
+
+```markdown
+## Product context (Marrow)
+- Before any task, call prepare_task (or run `marrow loop "<task>"`) for decided vs open product truth with provenance.
+- Build only on decided facts. For open or contested ones, ask a human. Never infer product intent from the code.
+```
+
+That is enough to start. For the full team ritual, paste [templates/AGENTS.marrow.md](./templates/AGENTS.marrow.md).
 
 ## Self host
 

@@ -2,6 +2,8 @@
 
 This repo uses Marrow as the product source of truth for coding agents.
 
+New to Marrow? The Non-Negotiables below plus `marrow loop "<task>"` (or the `prepare_task` MCP tool) before you code are enough to start. The rest is the full ritual.
+
 ## Non-Negotiables
 
 - Never infer product truth from the codebase alone.

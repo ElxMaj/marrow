@@ -2,6 +2,18 @@
 
 Marrow should sit in the coding loop, not beside it. The point is simple: before an agent changes code, it reads the product truth for that task. After it changes code, it checks whether the diff contradicts anything the room decided.
 
+## Wire it in (three lines)
+
+The fastest way to put an agent in the loop is three lines in the project's `CLAUDE.md`, `AGENTS.md`, or equivalent:
+
+```markdown
+## Product context (Marrow)
+- Before any task, call prepare_task (or run `marrow loop "<task>"`) for decided vs open product truth with provenance.
+- Build only on decided facts. For open or contested ones, ask a human. Never infer product intent from the code.
+```
+
+Keep the instruction file short and pointing at Marrow rather than carrying the room inside it. The context window is metered, so the room belongs on disk and only the task-scoped slice belongs in the prompt. The full ritual below is optional. These three lines are enough to start.
+
 ## The Daily Loop
 
 Run this at the start of the day or before planning work:
