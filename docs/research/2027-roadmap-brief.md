@@ -51,8 +51,9 @@ Core design (the parts that constrain the roadmap):
   only when a human promotes it. No agent or MCP tool can write `decided`. This trust boundary is
   the product's spine.
 - **Context is task-scoped.** The retrieval call (`prepare_task`) never returns the whole brain.
-  It returns a small, walked, task-relevant slice. Measured roughly 2.5x token efficiency vs
-  dumping context.
+  It returns a small, walked, task-relevant slice. Measured token efficiency vs dumping
+  context: 2.9x for a flat task-scoped search, 1.5x for the full prepare_task brief
+  (two separate numbers; the brief carries decided truth, questions, and provenance).
 - **Surfaces:** a CLI, an MCP server (so any MCP host uses it), and a web console with a
   dependency-free living "map" of the knowledge graph.
 

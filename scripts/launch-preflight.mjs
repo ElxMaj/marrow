@@ -734,7 +734,9 @@ async function checkBenchmarkAndClaims() {
 
   const readme = await readFile(join(root, "README.md"), "utf8");
   const faq = await readFile(join(root, "docs/faq.md"), "utf8");
-  if (readme.includes("synthetic golden set") && faq.includes("No partner-data benchmark")) {
+  const labelsSynthetic =
+    readme.includes("synthetic corpus") || readme.includes("synthetic golden set");
+  if (labelsSynthetic && faq.includes("No partner-data benchmark")) {
     pass("benchmark claims", "synthetic evals are labeled and partner data is not implied");
   } else {
     fail("benchmark claims", "synthetic or partner-data wording is missing");

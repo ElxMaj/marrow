@@ -110,6 +110,13 @@ const CONCEPTS: string[][] = [
   ],
   ["search", "retrieval", "query", "embedding", "vector", "rank", "relevance", "semantic"],
   ["notification", "email", "alert", "notify", "digest", "reminder"],
+  ["export", "csv", "download", "async", "poll", "spreadsheet"],
+  ["onboarding", "signup", "activation", "walkthrough", "checklist", "serve"],
+  ["permission", "role", "admin", "access", "rbac", "invite", "seat", "viewer", "editor"],
+  ["offline", "mobile", "sync", "conflict", "device", "writer"],
+  ["retention", "purge", "backup", "restore", "archive", "recoverable"],
+  ["deploy", "release", "rollback", "canary", "flag", "rollout"],
+  ["pricing", "plan", "tier", "trial", "discount", "upgrade", "card"],
 ];
 
 const stem = (word: string): string => word.replace(/s$/, "");
