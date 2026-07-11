@@ -1043,7 +1043,12 @@ export function formatResult(result: unknown): string {
     if (Array.isArray(r[key])) {
       const nodes = asNodes(r[key]);
       if (nodes.length === 0) {
-        return `(No ${key}). If the brain is empty, run \`marrow add <file>\` to ingest the room.`;
+        // a search that matches nothing is not the same as an empty brain, so
+        // `ask` points at broader terms and browsing instead of implying the
+        // ingest failed. the list commands keep the empty-brain hint.
+        return key === "results"
+          ? "(No matches). Try broader terms, browse with `marrow decisions`, or `marrow add <file>` to ingest more of the room."
+          : `(No ${key} yet). If the brain is empty, run \`marrow add <file>\` to ingest the room.`;
       }
       return nodes.map(formatNode).join("\n");
     }
