@@ -1,0 +1,112 @@
+[
+  {
+    "name": "explicit commitment becomes a decision with verbatim provenance",
+    "trap": "baseline: the happy path must score, or nothing else is trustworthy",
+    "evidence": {
+      "text": "Dana: We decided magic links, no passwords. Password reset tickets were a third of support volume. The auth screen is the first thing new users see.",
+      "source": "write-golden/commitment.md"
+    },
+    "recordedExtraction": {
+      "entities": [{ "name": "auth screen", "quote": "auth screen", "confidence": 0.7 }],
+      "decisions": [
+        {
+          "title": "Auth uses magic links, no passwords",
+          "rationale": "password reset tickets were a third of support volume",
+          "quote": "We decided magic links, no passwords",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "expected": {
+      "entities": ["auth screen"],
+      "decisions": ["Auth uses magic links, no passwords"]
+    }
+  },
+  {
+    "name": "a hallucinated quote is dropped, never stored as plausible provenance",
+    "trap": "Mem0 junk class: hallucinated attributes. The model invents support the text does not contain.",
+    "evidence": {
+      "text": "Standup: the export job finished. Nothing new on infra this week.",
+      "source": "write-golden/hallucination.md"
+    },
+    "recordedExtraction": {
+      "entities": [{ "name": "export job", "quote": "export job", "confidence": 0.6 }],
+      "decisions": [
+        {
+          "title": "All messaging moves to Kafka",
+          "rationale": "invented by the model",
+          "quote": "we absolutely committed to Kafka",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "expected": {
+      "entities": ["export job"],
+      "decisions": []
+    }
+  },
+  {
+    "name": "a tentative leaning is recorded as a question, not a decision",
+    "trap": "Mem0 junk class: transient details stored as durable. A well-behaved model records the leaning as a question; the deterministic filter for a misbehaving model is roadmap R23.",
+    "evidence": {
+      "text": "Sam: We are probably going with Postgres for the queue, but let us confirm next week after the load test.",
+      "source": "write-golden/tentative.md"
+    },
+    "recordedExtraction": {
+      "questions": [
+        {
+          "prompt": "Confirm Postgres for the queue after the load test",
+          "quote": "probably going with Postgres for the queue",
+          "confidence": 0.4
+        }
+      ]
+    },
+    "expected": {
+      "decisions": [],
+      "questions": ["Confirm Postgres for the queue after the load test"]
+    }
+  },
+  {
+    "name": "goals and entities land as typed nodes with their own spans",
+    "trap": "coverage: all four kinds flow through the same guards",
+    "evidence": {
+      "text": "Review: onboarding must be self serve by Q3. The billing portal keeps confusing agencies. Alex will own the pricing page rewrite.",
+      "source": "write-golden/goals.md"
+    },
+    "recordedExtraction": {
+      "entities": [
+        { "name": "billing portal", "quote": "billing portal", "confidence": 0.7 },
+        { "name": "pricing page", "quote": "pricing page", "confidence": 0.6 }
+      ],
+      "goals": [
+        {
+          "title": "Onboarding is self serve by Q3",
+          "goalType": "product",
+          "quote": "onboarding must be self serve by Q3",
+          "confidence": 0.8
+        }
+      ]
+    },
+    "expected": {
+      "entities": ["billing portal", "pricing page"],
+      "goals": ["Onboarding is self serve by Q3"]
+    }
+  },
+  {
+    "name": "restated entities merge instead of duplicating",
+    "trap": "Mem0 junk class: near-duplicates. The same entity restated must merge by normalized name.",
+    "evidence": {
+      "text": "Notes: the Billing Portal came up again. Agencies still get lost in the billing portal when adding seats.",
+      "source": "write-golden/restated.md"
+    },
+    "recordedExtraction": {
+      "entities": [
+        { "name": "Billing Portal", "quote": "Billing Portal", "confidence": 0.7 },
+        { "name": "billing portal", "quote": "billing portal when adding seats", "confidence": 0.6 }
+      ]
+    },
+    "expected": {
+      "entities": ["billing portal"]
+    }
+  }
+]

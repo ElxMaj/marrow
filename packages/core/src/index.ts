@@ -95,6 +95,14 @@ export {
   type SemanticDriftCandidate,
 } from "./semantic-drift.js";
 export { loadSyntheticGolden, runEval, type EvalCase, type EvalReport } from "./eval.js";
+export {
+  createReplayModel,
+  loadWriteGolden,
+  runWriteEval,
+  type ReplayModel,
+  type WriteEvalCase,
+  type WriteEvalReport,
+} from "./eval-write.js";
 export { runBenchmark, seedBenchmarkBrain, type SeedDoc } from "./benchmark.js";
 export {
   EmailConnector,

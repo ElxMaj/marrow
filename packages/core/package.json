@@ -14,7 +14,8 @@
     "!dist/**/*.test.*",
     "migrations",
     "scripts/migrate.mjs",
-    "fixtures/synthetic-golden.json"
+    "fixtures/synthetic-golden.json",
+    "fixtures/write-golden.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
