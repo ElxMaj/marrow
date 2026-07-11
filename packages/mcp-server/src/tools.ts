@@ -1,4 +1,4 @@
-import { type Marrow } from "@marrowhq/core";
+import { type Marrow, scrubEnabled, scrubSecrets } from "@marrowhq/core";
 import { z } from "zod";
 
 // The agent's read/write surface. Every tool is thin over core, every result
@@ -187,7 +187,7 @@ export function createTools(core: Marrow): ToolDef[] {
     {
       name: "append_evidence",
       description:
-        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Distillation happens separately.",
+        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Credential-shaped spans (API keys, tokens, private keys) are replaced with [redacted:kind] placeholders before storage, because evidence cannot be deleted afterward. Distillation happens separately.",
       inputSchema: {
         type: "object",
         properties: { text: { type: "string" }, source: { type: "string" } },
@@ -195,7 +195,11 @@ export function createTools(core: Marrow): ToolDef[] {
       },
       handler: async (args) => {
         const { text, source } = z.object({ text: z.string(), source: z.string() }).parse(args);
-        return { evidenceId: await core.ingest({ text, source }) };
+        const redactedSecrets = scrubEnabled() ? scrubSecrets(text).total : 0;
+        return {
+          evidenceId: await core.ingest({ text, source }),
+          ...(redactedSecrets > 0 ? { redactedSecrets } : {}),
+        };
       },
     },
     {

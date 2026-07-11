@@ -377,6 +377,18 @@ describe("mcp tools", () => {
     expect(node.confidence.source).toBe("model");
   });
 
+  it("append_evidence redacts credential-shaped spans before storage and reports it", async () => {
+    const result = (await call("append_evidence", {
+      text: "deploy note: export MARROW token sk-proj-abc123DEF456ghi789 rotated today",
+      source: "sessions/leak.md",
+    })) as { evidenceId: string; redactedSecrets?: number };
+    expect(result.redactedSecrets).toBe(1);
+    const stored = await core.getEvidence(result.evidenceId);
+    expect(stored?.text).not.toContain("sk-proj-abc123DEF456ghi789");
+    expect(stored?.text).toContain("[redacted:provider-key]");
+    expect(stored?.text).toContain("rotated today");
+  });
+
   it("propose_node advertises and accepts an entity description", async () => {
     const tool = tools.find((t) => t.name === "propose_node");
     const properties = (tool?.inputSchema as { properties?: Record<string, unknown> }).properties;
