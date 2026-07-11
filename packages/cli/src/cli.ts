@@ -242,6 +242,7 @@ Bootstrap / maintain:
   loop "<task>" [--check] [--staged|--unstaged|--since <ref>] [--no-semantic]
                               Prepare a compact agent brief for one task
   truth                       Show the product truth maintenance brief
+  verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
   init [repoPath]             One-time repo onboarding scan (asks, never asserts)
   drift [repoPath] [--staged|--unstaged|--since <ref>] [--no-semantic] [--ci]
                               Flag code that diverged from a decided fact
@@ -430,6 +431,9 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
 
     case "truth":
       return core.maintainTruth();
+
+    case "verify":
+      return core.verify();
 
     case "add": {
       const file = positional(rest);
@@ -982,6 +986,28 @@ export function formatResult(result: unknown): string {
     });
     return [
       `Index: ${entries.length} node${entries.length === 1 ? "" : "s"}, most connected first`,
+      ...lines,
+    ].join("\n");
+  }
+
+  // verify: the skeptic's pass over the proposed facts.
+  if ("results" in r && "flagged" in r && "survived" in r && Array.isArray(r.results)) {
+    const rep = r as {
+      checked: number;
+      survived: number;
+      flagged: number;
+      results: { kind: string; title: string; verdict: string; reasons: string[] }[];
+    };
+    if (rep.checked === 0) {
+      return "(No proposed facts to verify. The skeptic checks open, model-proposed facts.)";
+    }
+    const lines = rep.results.map((res) => {
+      const mark =
+        res.verdict === "survived" ? "[survived]" : `[flagged: ${res.reasons.join(", ")}]`;
+      return `  ${mark} ${res.kind}: ${res.title}`;
+    });
+    return [
+      `Skeptic: ${rep.checked} checked, ${rep.survived} survived, ${rep.flagged} flagged`,
       ...lines,
     ].join("\n");
   }

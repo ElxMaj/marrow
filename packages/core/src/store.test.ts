@@ -34,7 +34,7 @@ beforeEach(async () => {
   // even here, which is why every test inserts the evidence it needs. the Store
   // exposes no evidence update or delete path at all.
   await admin.query(
-    "truncate catch_events, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, verification, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -603,6 +603,36 @@ describe("Store goals", () => {
     expect(after?.verifiedAt).toBeDefined();
     // no TTL configured, so a promoted fact does not carry an expiry
     expect(after?.expiresAt).toBeUndefined();
+  });
+
+  it("records skeptic verdicts append-only and returns the latest", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/v.md" });
+    const dec = await store.insertDecision({
+      title: "use passkeys",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "flagged",
+      reasons: ["single_source"],
+    });
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "survived",
+      reasons: [],
+    });
+    const latest = await store.latestVerification(dec.id);
+    expect(latest?.verdict).toBe("survived");
+    expect(latest?.reasons).toEqual([]);
+    // the node itself is untouched by a verdict
+    expect((await store.getDecision(dec.id))?.status).toBe("open");
+    expect(await store.latestVerification("dec_missing")).toBeUndefined();
   });
 });
 

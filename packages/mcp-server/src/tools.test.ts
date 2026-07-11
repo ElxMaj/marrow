@@ -78,7 +78,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate catch_events, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, verification, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -99,6 +99,7 @@ describe("mcp tools", () => {
       "propose_node",
       "check_drift",
       "maintain_truth",
+      "verify",
       "accept_catch",
       "dismiss_catch",
     ]);
@@ -204,6 +205,65 @@ describe("mcp tools", () => {
       "status",
       "title",
     ]);
+  });
+
+  it("verify flags a single-source proposal, records a verdict, and never decides", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/v.md" });
+    const dec = await store.insertDecision({
+      title: "Auth uses passkeys",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+
+    const report = (await call("verify", {})) as {
+      checked: number;
+      flagged: number;
+      results: { nodeId: string; verdict: string; reasons: string[] }[];
+    };
+    const res = report.results.find((r) => r.nodeId === dec.id);
+    expect(res?.verdict).toBe("flagged");
+    expect(res?.reasons).toContain("single_source");
+    // the skeptic never promotes: the proposal stays open and model-confidence
+    const after = await store.getDecision(dec.id);
+    expect(after?.status).toBe("open");
+    expect(after?.confidence.source).toBe("model");
+    // and a verdict was recorded
+    expect((await store.latestVerification(dec.id))?.verdict).toBe("flagged");
+  });
+
+  it("verify raises a question when a proposal contradicts a decided fact", async () => {
+    const ev = await store.insertEvidence({
+      text: "auth uses passwords today, magic links tomorrow",
+      source: "room/c.md",
+    });
+    await store.insertDecision({
+      title: "auth uses passwords",
+      rationale: "legacy",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+    const proposal = await store.insertDecision({
+      title: "auth uses no passwords, magic links only",
+      rationale: "passwordless",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+
+    await call("verify", {});
+
+    const questions = (await call("get_open_questions", {})) as {
+      questions: { prompt: string; relatesTo?: string[] }[];
+    };
+    expect(questions.questions.some((q) => /verify.*contradict/i.test(q.prompt))).toBe(true);
+    // the proposal stays open: the skeptic escalates, it never decides
+    expect((await store.getDecision(proposal.id))?.status).toBe("open");
   });
 
   it("get_open_questions returns only open questions with provenance", async () => {

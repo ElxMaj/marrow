@@ -334,6 +334,13 @@ export function createTools(core: Marrow): ToolDef[] {
       handler: async () => core.maintainTruth(),
     },
     {
+      name: "verify",
+      description:
+        "Run the skeptic over the facts an agent proposed. With a fresh context it attacks each open, model-proposed fact and flags single-source, weakly-sourced, or contradicts-a-decided-fact ones, records a verdict, and raises a question on a contradiction. It never promotes a fact: only a human answer decides.",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => core.verify(),
+    },
+    {
       name: "accept_catch",
       description:
         "Record that you acted on a surfaced drift catch. Stores the resolution as evidence, promotes the question to decided, and writes a catch_acted_on event. Only questions that relate to a decided decision can be accepted.",

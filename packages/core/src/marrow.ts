@@ -54,6 +54,7 @@ import {
   type VisionProvider,
 } from "./providers/types.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
+import { skepticReasons, type VerifyReason, verdictFor } from "./skeptic.js";
 import { type IndexEntry, type RunFilter, Store, createStore } from "./store.js";
 
 export interface IngestInput {
@@ -241,6 +242,23 @@ export interface NeighborLink {
 export interface NeighborsBrief {
   node: { id: string; kind: EdgeNodeKind; title: string; status: Status } | undefined;
   neighbors: NeighborLink[];
+}
+
+/** One proposed fact the skeptic looked at, with its verdict and any flags. */
+export interface VerifyResult {
+  nodeId: string;
+  kind: Distilled["kind"];
+  title: string;
+  verdict: "survived" | "flagged";
+  reasons: VerifyReason[];
+}
+
+/** The skeptic's pass over the currently-proposed facts. */
+export interface VerifyReport {
+  checked: number;
+  survived: number;
+  flagged: number;
+  results: VerifyResult[];
 }
 
 /** One edge in the console graph, endpoints as bare node ids. */
@@ -1611,6 +1629,59 @@ export class Marrow {
    * the agent proposes, only a human answer (the question loop) promotes to
    * decided. there is deliberately no parameter to set status here.
    */
+  /**
+   * The skeptic. It attacks every open, model-proposed fact with a fresh context
+   * (it sees only the node's own evidence and the decided facts it might
+   * contradict, never the conversation that proposed it) and records a verdict:
+   * survived, or flagged with reasons (single source, weak provenance, or it
+   * contradicts a decided fact). A contradiction raises a normal question a human
+   * still answers. It NEVER promotes a node: this reinforces the propose/promote
+   * gate, it does not bypass it.
+   */
+  async verify(): Promise<VerifyReport> {
+    const [openDecisions, openGoals, decided] = await Promise.all([
+      this.store.listDecisions({ status: "open" }),
+      this.store.listGoals({ status: "open" }),
+      this.store.listDecisions({ status: "decided" }),
+    ]);
+    const proposed: Distilled[] = [...openDecisions, ...openGoals].filter(
+      (node) => node.confidence.source === "model",
+    );
+    const results: VerifyResult[] = [];
+    for (const node of proposed) {
+      const conflict =
+        node.kind === "decision"
+          ? decided.find((other) => other.id !== node.id && decisionsConflict(node, other))
+          : undefined;
+      const reasons = skepticReasons(node, conflict !== undefined);
+      const verdict = verdictFor(reasons);
+      await this.store.insertVerification({
+        nodeId: node.id,
+        nodeKind: node.kind,
+        verdict,
+        reasons,
+      });
+      // a contradiction against a decided fact is escalated to the human loop,
+      // deduped, exactly like a conflict found at distill time. never auto-resolved.
+      if (conflict && !(await this.store.hasQuestionRelating(node.id, conflict.id))) {
+        await this.store.insertQuestion({
+          prompt: `verify: the proposed "${nodeTitle(node)}" may contradict the decided "${conflict.title}". which one holds?`,
+          relatesTo: [node.id, conflict.id],
+          status: "open",
+          confidence: { value: 0.5, source: "model" },
+          provenance: node.provenance,
+        });
+      }
+      results.push({ nodeId: node.id, kind: node.kind, title: nodeTitle(node), verdict, reasons });
+    }
+    return {
+      checked: proposed.length,
+      survived: results.filter((result) => result.verdict === "survived").length,
+      flagged: results.filter((result) => result.verdict === "flagged").length,
+      results,
+    };
+  }
+
   async proposeNode(input: ProposeInput): Promise<Distilled> {
     const confidence = { value: input.confidence ?? 0.5, source: "model" as const };
     if (input.kind === "entity") {

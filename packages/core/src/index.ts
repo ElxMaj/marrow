@@ -13,8 +13,11 @@ export {
   type NeighborsBrief,
   type GraphEdge,
   type BrainGraph,
+  type VerifyResult,
+  type VerifyReport,
   isFactStale,
 } from "./marrow.js";
+export { skepticReasons, verdictFor, type VerifyReason, type VerifyVerdict } from "./skeptic.js";
 export {
   Queue,
   DISTILL_QUEUE,
@@ -37,6 +40,8 @@ export {
   type EmbeddingInput,
   type CatchEvent,
   type CatchMetrics,
+  type VerificationDraft,
+  type VerificationRecord,
   type RunDraft,
   type RunFilter,
   type SyncOutcome,

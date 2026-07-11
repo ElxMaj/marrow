@@ -119,6 +119,7 @@ describe("mcp server (over the SDK transport)", () => {
       "propose_node",
       "check_drift",
       "maintain_truth",
+      "verify",
       "accept_catch",
       "dismiss_catch",
     ]);

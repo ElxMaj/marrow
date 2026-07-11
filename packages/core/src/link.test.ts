@@ -109,7 +109,7 @@ afterAll(async () => {
 beforeEach(async () => {
   model.reset();
   await admin.query(
-    "truncate edge, provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate verification, edge, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
