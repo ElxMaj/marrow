@@ -120,4 +120,4 @@ Do not replace `prepare_task` with a broad search. The sacred rule is task-scope
 
 ## Launch Note
 
-Until npm latest matches the repo package version, use the local clone commands from the README (`pnpm marrow ...`) or packed packages for demos. `pnpm launch:preflight` reports whether npm, CI, DNS, Vercel, and package metadata are ready for public launch.
+npm's current `@marrowhq/cli` 0.4.1 is a stale build from before the repo history was reset; a 0.5.0 release is queued on main as changesets. Until the founder cuts it, use the local clone commands from the README (`pnpm marrow ...`) or packed packages for demos. `pnpm launch:preflight` reports whether npm, CI, DNS, Vercel, and package metadata are ready, and fails if a packed tarball would ship built test files.

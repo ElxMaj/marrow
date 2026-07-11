@@ -8,6 +8,7 @@ import {
   evaluateDemoDocsTruth,
   evaluateHeroSourcePath,
   evaluateLiveSourceSetupPath,
+  evaluatePackedTarballFiles,
   evaluateSourceSetupPath,
   formatMarkdownReport,
   formatTextReport,
@@ -276,4 +277,22 @@ test("launch docs include the apex content guard", () => {
   const launchDoc = readFileSync(new URL("../docs/launch.md", import.meta.url), "utf8");
   assert.match(launchDoc, /public apex serves the agent launch page/);
   assert.match(launchDoc, /curl -fsSL https:\/\/marrowhq\.com/);
+});
+
+test("packed tarball file lists must not ship built test files", () => {
+  const clean = evaluatePackedTarballFiles(["README.md", "dist/cli.js", "dist/main.js"]);
+  assert.deepEqual(clean, { ok: true, detail: "3 files, no built tests" });
+
+  const dirty = evaluatePackedTarballFiles([
+    "dist/cli.js",
+    "dist/cli.test.js",
+    "dist/color.test.js",
+  ]);
+  assert.equal(dirty.ok, false);
+  assert.match(dirty.detail, /2 built test files would publish/);
+  assert.match(dirty.detail, /dist\/cli\.test\.js/);
+
+  const unbuilt = evaluatePackedTarballFiles(["README.md"]);
+  assert.equal(unbuilt.ok, false);
+  assert.match(unbuilt.detail, /no dist\/ files in the pack list/);
 });

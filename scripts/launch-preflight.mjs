@@ -295,6 +295,25 @@ export function formatMarkdownReport(report) {
   return lines.join("\n");
 }
 
+// The stale 0.4.1 npm build shipped compiled test files. The files-field
+// negation prevents that now, but only a check on the actual pack list makes
+// a regression impossible to republish.
+export function evaluatePackedTarballFiles(filenames) {
+  const tests = filenames.filter((name) => /\.test\./.test(name));
+  if (tests.length > 0) {
+    const shown = tests.slice(0, 2).join(", ");
+    const suffix = tests.length > 2 ? ", ..." : "";
+    return {
+      ok: false,
+      detail: `${tests.length} built test file${tests.length === 1 ? "" : "s"} would publish (${shown}${suffix})`,
+    };
+  }
+  if (!filenames.some((name) => name.startsWith("dist/"))) {
+    return { ok: false, detail: "no dist/ files in the pack list; build before preflight" };
+  }
+  return { ok: true, detail: `${filenames.length} files, no built tests` };
+}
+
 export function evaluateHeroSourcePath(html) {
   const cover = html.match(/<section class="cover">([\s\S]*?)<\/section>/)?.[1];
   if (!cover) return { ok: false, detail: "missing cover section" };
@@ -746,6 +765,27 @@ async function checkPackageFiles() {
       pass(`package files ${pkg.name}`, "built tests are excluded");
     } else {
       fail(`package files ${pkg.name}`, "built tests are not excluded from packed files");
+    }
+
+    // Verify the outcome, not just the config: list what npm would actually pack.
+    const packageDir = dirname(join(root, path));
+    const packed = await run("npm", ["pack", "--dry-run", "--json"], { cwd: packageDir });
+    if (!packed.ok) {
+      fail(`packed tarball ${pkg.name}`, `npm pack --dry-run failed: ${packed.stderr}`);
+      continue;
+    }
+    let filenames;
+    try {
+      filenames = JSON.parse(packed.stdout)[0].files.map((file) => file.path);
+    } catch {
+      fail(`packed tarball ${pkg.name}`, "could not parse npm pack --dry-run output");
+      continue;
+    }
+    const verdict = evaluatePackedTarballFiles(filenames);
+    if (verdict.ok) {
+      pass(`packed tarball ${pkg.name}`, verdict.detail);
+    } else {
+      fail(`packed tarball ${pkg.name}`, verdict.detail);
     }
   }
 }

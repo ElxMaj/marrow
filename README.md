@@ -117,7 +117,7 @@ pnpm marrow web      # open the console in your browser
 
 `demo` ingests an interview, distills it, answers the loop, and shows the soft-delete decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. The only thing you provide is Postgres. See [docs/console.md](./docs/console.md).
 
-`demo` sets up its own schema, so the `pnpm db:migrate` step above is only needed for `web` and the other commands. After npm latest matches this repo, the same commands work as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`, with `npx @marrowhq/cli migrate` to set up the schema for anything other than `demo`. Until then, the source path above is the honest first run.
+`demo` sets up its own schema, so the `pnpm db:migrate` step above is only needed for `web` and the other commands. The same commands work from npm as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`, with `npx @marrowhq/cli migrate` to set up the schema for anything other than `demo`. One honest warning until the queued 0.5.0 release is cut: npm's current 0.4.1 is a stale build from before this repo's history was reset (no `doctor`, no error remedies), so the clone path above is the better first run today.
 
 Run `marrow doctor` (or `pnpm marrow doctor`) any time to check the whole stack at a glance: DATABASE_URL, Postgres reachability, schema, and whether a model is configured for distillation. Each failing check prints what to run next.
 

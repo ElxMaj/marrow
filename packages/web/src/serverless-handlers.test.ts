@@ -56,6 +56,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await admin.query(
+    "truncate provenance, embedding, entity, decision, question, goal, connector_config, connector_state, evidence restart identity cascade",
+  );
   const { closeServerlessForTests } = await import("../api/_core");
   await closeServerlessForTests();
   await store.close();
