@@ -21,6 +21,7 @@ export {
   isFactStale,
 } from "./marrow.js";
 export { skepticReasons, verdictFor, type VerifyReason, type VerifyVerdict } from "./skeptic.js";
+export { instructionSmells, type InstructionSmell } from "./injection.js";
 export { findDuplicateTitles } from "./lint.js";
 export { scrubEnabled, scrubSecrets, type ScrubFinding, type ScrubResult } from "./scrub.js";
 export { synthHeadline, type SynthCounts } from "./synthesize.js";
