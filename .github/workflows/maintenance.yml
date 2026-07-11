@@ -1,0 +1,39 @@
+name: maintenance
+# The "keep the brain alive" loops as scheduled maintenance: a weekly digest of
+# what changed and what deserves attention, plus a graph-hygiene sweep. It runs
+# on demand by default. To run it weekly, uncomment the schedule below. In real
+# use point DATABASE_URL at your hosted brain through a secret instead of the
+# throwaway service; against an empty database it simply reports nothing.
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 8 * * 1" # every Monday at 08:00 UTC
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marrow
+          POSTGRES_PASSWORD: marrow
+          POSTGRES_DB: marrow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marrow"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # In real use, point this at your hosted brain via a repository secret:
+      # DATABASE_URL: ${{ secrets.MARROW_DATABASE_URL }}
+      DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - name: What changed and what deserves attention
+        run: pnpm marrow synthesize --days 7
+      - name: Graph hygiene
+        run: pnpm marrow lint

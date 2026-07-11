@@ -86,6 +86,15 @@ marrow dismiss <questionId> --reason "Not product drift because ..."
 5. Require `marrow loop "<task>"` before implementation and `marrow loop "<task>" --check` before review.
 6. Keep connector health clean so the room does not go stale.
 
+## Keep the brain alive with loops
+
+A brain that only grows when someone remembers to feed it goes stale. Run the maintenance loops on a schedule, not on memory:
+
+- **After each session**: mine what just happened into the brain. `scripts/session-end-hook.sh` appends a session transcript as dated evidence (`marrow add --source session:<time>`), so a session becomes memory without filing anything. Wire it into your agent host (a Claude Code Stop hook, a shell trap, or a manual run: `scripts/session-end-hook.sh < transcript.md`). It only appends; distillation stays separate.
+- **Weekly**: run `marrow synthesize` for a digest of what changed and what deserves attention (newly decided, contested, stale facts, drift catches, open questions), and `marrow lint` for a graph-hygiene sweep (duplicates, contradictions, dead edges). Both are read-only.
+
+Schedule the weekly pass with GitHub Actions cron or your own cron. `.github/workflows/maintenance.yml` is a ready template: it runs on demand, and a commented `schedule` block makes it weekly. Point `DATABASE_URL` at your real brain. No daemon and no new service: the loops are CLI commands a scheduler calls.
+
 ## MCP Tool Contract
 
 Agents should start with:
