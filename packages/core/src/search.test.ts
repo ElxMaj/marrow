@@ -39,7 +39,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate edge, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -142,5 +142,64 @@ describe("raw evidence search", () => {
       kind: "evidence",
       source: "interviews/match.md",
     });
+  });
+});
+
+describe("prepare_task walks the graph", () => {
+  it("surfaces a decided fact two hops away with no shared words, and keeps search flat", async () => {
+    // keyword mode (no embedding) so retrieval is deterministic lexical.
+    const core = new Marrow(store);
+    const ev = await store.insertEvidence({ text: "checkout notes", source: "room/x.md" });
+    const provenance = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance,
+    });
+    const near = await store.insertDecision({
+      title: "one-click purchase flow",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    const far = await store.insertDecision({
+      title: "refunds settle within thirty days",
+      rationale: "finance policy",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    // checkout -concerns-> near -refines-> far. "far" shares no word with the task.
+    await store.insertEdge({
+      fromId: ent.id,
+      fromKind: "entity",
+      toId: near.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+    await store.insertEdge({
+      fromId: near.id,
+      fromKind: "decision",
+      toId: far.id,
+      toKind: "decision",
+      relation: "refines",
+      confidence: 0.7,
+      source: "model",
+    });
+
+    const brief = await core.prepareTask("checkout");
+    const ids = brief.safeToBuild.facts.map((f) => f.id);
+    expect(ids).toContain(far.id); // the 2-hop decided fact surfaced via the walk
+
+    // search itself stays flat: it does not pull in graph neighbors, so the token
+    // benchmark is unaffected. "far" shares no word with the query.
+    const hits = await core.search("checkout");
+    expect(hits.map((n) => n.id)).not.toContain(far.id);
   });
 });

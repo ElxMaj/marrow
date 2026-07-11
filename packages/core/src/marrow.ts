@@ -113,10 +113,14 @@ function relevance(task: string, node: Distilled): number {
   return score;
 }
 
-function byRelevance(task: string, searchIds: Set<string>) {
+// The boost map scores retrieval seeds and their graph neighbors above plain
+// term overlap: a search hit is +10, a 1-hop neighbor +4, a 2-hop neighbor +2.
+// A node present in the map is kept even with zero shared words, which is how a
+// fact one or two hops from the task can surface at all.
+function byRelevance(task: string, boost: Map<string, number>) {
   return (a: Distilled, b: Distilled): number => {
-    const scoreA = relevance(task, a) + (searchIds.has(a.id) ? 10 : 0);
-    const scoreB = relevance(task, b) + (searchIds.has(b.id) ? 10 : 0);
+    const scoreA = relevance(task, a) + (boost.get(a.id) ?? 0);
+    const scoreB = relevance(task, b) + (boost.get(b.id) ?? 0);
     if (scoreA !== scoreB) return scoreB - scoreA;
     return b.updatedAt.localeCompare(a.updatedAt);
   };
@@ -144,10 +148,10 @@ function uniqueBriefNodes(nodes: BriefNode[]): BriefNode[] {
   return out;
 }
 
-function relevantOnly(task: string, searchIds: Set<string>, nodes: Distilled[]): Distilled[] {
+function relevantOnly(task: string, boost: Map<string, number>, nodes: Distilled[]): Distilled[] {
   return uniqueNodes(nodes)
-    .filter((node) => searchIds.has(node.id) || relevance(task, node) > 0)
-    .sort(byRelevance(task, searchIds));
+    .filter((node) => boost.has(node.id) || relevance(task, node) > 0)
+    .sort(byRelevance(task, boost));
 }
 
 function isGapQuestion(question: BriefNode): boolean {
@@ -767,7 +771,26 @@ export class Marrow {
     } = {},
   ): Promise<TaskBrief> {
     const search = await this.runSearch(task, 12);
-    const searchIds = new Set(search.results.map((node) => node.id));
+    // Walk the graph out from the top search hits so a fact one or two hops from
+    // the task, even with no shared words, can enter the brief. This is the step
+    // that makes retrieval get stronger as the graph grows, and it is one bounded
+    // query. It stays inside prepare_task: search() is left flat, so the token
+    // benchmark is unaffected and the whole brain is never returned.
+    const boost = new Map<string, number>();
+    for (const node of search.results) boost.set(node.id, 10);
+    const seeds = search.results.slice(0, 5);
+    if (seeds.length > 0) {
+      const neighbors = await this.store.neighbors(
+        seeds.map((n) => n.id),
+        seeds.map((n) => n.kind),
+        2,
+        50,
+      );
+      for (const nb of neighbors) {
+        if (boost.has(nb.id)) continue; // a seed keeps its higher boost
+        boost.set(nb.id, nb.depth === 1 ? 4 : 2);
+      }
+    }
     const [decidedDecisions, decidedGoals, contestedDecisions, contestedGoals, openQuestions] =
       await Promise.all([
         this.store.listDecisions({ status: "decided" }),
@@ -777,12 +800,9 @@ export class Marrow {
         this.getOpenQuestions(),
       ]);
 
-    const safeFacts = relevantOnly(task, searchIds, [...decidedGoals, ...decidedDecisions]);
-    const contestedFacts = relevantOnly(task, searchIds, [
-      ...contestedGoals,
-      ...contestedDecisions,
-    ]);
-    const questionNodes = relevantOnly(task, searchIds, openQuestions);
+    const safeFacts = relevantOnly(task, boost, [...decidedGoals, ...decidedDecisions]);
+    const contestedFacts = relevantOnly(task, boost, [...contestedGoals, ...contestedDecisions]);
+    const questionNodes = relevantOnly(task, boost, openQuestions);
 
     let driftQuestions: BriefNode[] = [];
     let check: TaskBrief["check"] | undefined;
