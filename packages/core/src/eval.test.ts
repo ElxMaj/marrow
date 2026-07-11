@@ -7,7 +7,12 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { type DiffHunk } from "./drift.js";
-import { runEval, assertNoSyntheticFalsePositives, type EvalCase } from "./eval.js";
+import {
+  runEval,
+  assertNoSyntheticFalsePositives,
+  type EvalCase,
+  loadSyntheticGolden,
+} from "./eval.js";
 import { Marrow } from "./marrow.js";
 import { Store } from "./store.js";
 
@@ -94,6 +99,16 @@ describe("golden-set eval", () => {
       },
     ]);
     expect(report.cases[0]?.falsePositives).toBeGreaterThan(0);
+  });
+
+  it("refuses to score zero cases: an empty run is not a perfect run", async () => {
+    await expect(runEval(core, [])).rejects.toThrow(/zero cases/);
+  });
+
+  it("ships a loadable bundled golden set", () => {
+    const cases = loadSyntheticGolden();
+    expect(cases.length).toBeGreaterThanOrEqual(3);
+    expect(cases.every((c) => c.synthetic)).toBe(true);
   });
 
   it("meets the synthetic golden-set precision and recall gate", async () => {

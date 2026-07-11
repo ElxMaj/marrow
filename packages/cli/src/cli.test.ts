@@ -468,6 +468,25 @@ describe("cli", () => {
     expect(stored?.text).toContain("do not reuse");
   });
 
+  it("eval with no fixture runs the bundled golden set, never a fake perfect empty run", async () => {
+    const bare = new Marrow(store); // drift eval is rule-based and keyless
+    const report = (await runCommand(bare, ["eval"])) as {
+      precision: number;
+      recall: number;
+      cases: { name: string }[];
+    };
+    expect(report.cases.length).toBeGreaterThanOrEqual(3);
+    expect(report.precision).toBeGreaterThanOrEqual(0.75);
+    expect(report.recall).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("eval refuses an empty fixture instead of printing 100 percent", async () => {
+    const bare = new Marrow(store);
+    const empty = join(tmpdir(), "marrow-eval-empty.json");
+    writeFileSync(empty, "[]");
+    await expect(runCommand(bare, ["eval", empty])).rejects.toThrow(/zero cases|no cases/i);
+  });
+
   it("distill processes an already-ingested evidence row", async () => {
     const id = await core.ingest({ text: transcript, source: "x" });
     const out = (await runCommand(core, ["distill", id])) as { nodes: Distilled[] };

@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { type Decision } from "@marrowhq/shared";
 
 import { type DiffHunk } from "./drift.js";
 import { type Marrow } from "./marrow.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 // PR-17: golden-set eval harness for the catch. Measures precision/recall on
 // labeled local fixtures; current bundled cases are synthetic.
@@ -71,11 +77,25 @@ export async function seedEvalCase(core: Marrow, c: EvalCase): Promise<string[]>
   return ids;
 }
 
+/** The bundled synthetic golden set, shipped with the package so `marrow eval`
+ *  scores real cases out of the box. Resolves relative to this module, which
+ *  sits one level under the package root in both src (dev) and dist (published). */
+export function loadSyntheticGolden(): EvalCase[] {
+  return JSON.parse(
+    readFileSync(join(here, "..", "fixtures", "synthetic-golden.json"), "utf8"),
+  ) as EvalCase[];
+}
+
 export async function runEval(
   core: Marrow,
   cases: EvalCase[],
   reset: () => Promise<void> = () => Promise.resolve(),
 ): Promise<EvalReport> {
+  if (cases.length === 0) {
+    throw new Error(
+      "eval: refusing to score zero cases; an empty run is not a perfect run. Pass a fixture file or run with no arguments to use the bundled golden set.",
+    );
+  }
   const results: EvalCaseResult[] = [];
 
   for (const c of cases) {
