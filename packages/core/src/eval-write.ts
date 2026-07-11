@@ -155,13 +155,15 @@ export async function runWriteEval(
         if (created.includes(title)) matched += 1;
         else missed.push(`${kind}: ${title}`);
       }
-      // questions count toward recall only: raising one is asking a human.
+      // every expected title counts toward recall, questions included...
+      expectedTotal += titles.length;
+      // ...but questions never count against precision: raising an extra
+      // question is asking a human, not junk memory.
       if (kind === "question") continue;
       for (const title of created) {
         if (!titles.includes(title)) extra.push(`${kind}: ${title}`);
       }
       scoredCreated += created.length;
-      expectedTotal += titles.length;
     }
     matchedTotal += matched;
 

@@ -370,8 +370,14 @@ function edgeFromRow(row: EdgeRow): Edge {
 export class Store {
   private readonly pool: pg.Pool;
 
-  constructor(databaseUrl: string) {
-    this.pool = new Pool({ connectionString: databaseUrl });
+  constructor(private readonly connectionString: string) {
+    this.pool = new Pool({ connectionString });
+  }
+
+  /** The connection string this store talks to. Scratch-schema helpers derive
+   *  a disposable schema on the SAME Postgres from it (rule: one datastore). */
+  get databaseUrl(): string {
+    return this.connectionString;
   }
 
   async close(): Promise<void> {

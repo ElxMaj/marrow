@@ -480,6 +480,28 @@ describe("cli", () => {
     expect(report.recall).toBeGreaterThanOrEqual(0.5);
   });
 
+  it("eval --all runs the full scorecard in a scratch schema, never the real brain", async () => {
+    const out = (await runCommand(core, ["eval", "--all"])) as {
+      benchmark: { ratio: number; quality?: { recallAtK: number } };
+      evals: {
+        write: { falseMemoryRate: number };
+        temporal: { currentStateAccuracy: number };
+        catch: { precision: number };
+      };
+    };
+    expect(out.benchmark.ratio).toBeGreaterThan(1);
+    expect(out.benchmark.quality?.recallAtK).toBeGreaterThanOrEqual(0.9);
+    expect(out.evals.write.falseMemoryRate).toBe(0);
+    expect(out.evals.temporal.currentStateAccuracy).toBe(1);
+    expect(out.evals.catch.precision).toBeGreaterThanOrEqual(0.75);
+    // the seeds stayed in the scratch schema: the real brain has none of them.
+    expect((await core.listEntities()).map((e) => e.name)).not.toContain("magic link auth");
+    expect((await core.searchEvidence("temporal-eval")).length).toBe(0);
+    const rendered = formatResult(out);
+    expect(rendered).toContain("Marrow scorecard");
+    expect(rendered).toContain("false memories 0.0%");
+  });
+
   it("eval refuses an empty fixture instead of printing 100 percent", async () => {
     const bare = new Marrow(store);
     const empty = join(tmpdir(), "marrow-eval-empty.json");

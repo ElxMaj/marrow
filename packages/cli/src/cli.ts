@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { extname, join } from "node:path";
 
 import {
   type Distilled,
@@ -21,20 +20,6 @@ import {
 
 import { colorStatus, dim } from "./color.js";
 import { watchFolder } from "./watch.js";
-
-const here = dirname(fileURLToPath(import.meta.url));
-
-/**
- * Load the bundled benchmark corpus. It lives in the package's own benchmark/
- * dir (shipped via files:["dist","benchmark"]) and resolves relative to this
- * module, which sits one level under the package root in both src (dev) and
- * dist (published), so the same join works in both.
- */
-export function loadBenchmarkCorpus(): import("@marrowhq/core").SeedDoc[] {
-  return JSON.parse(
-    readFileSync(join(here, "..", "benchmark", "corpus", "meetings.json"), "utf8"),
-  ) as import("@marrowhq/core").SeedDoc[];
-}
 
 const STATUSES: readonly Status[] = ["open", "decided", "contested", "superseded"];
 const isStatus = (value: string): value is Status => STATUSES.some((s) => s === value);
@@ -272,6 +257,7 @@ Bootstrap / maintain:
   metrics [--since ISO] [--until ISO] [--include-synthetic]
                               Catch precision and dismiss rate from events
   eval [fixture-path]         Run the golden-set eval harness (bundled set by default)
+  eval --all                  The full scorecard: catch, write, temporal, and retrieval numbers
   benchmark                   Run the token-reduction benchmark
 
 Connectors and automatic data flow (evidence is append only, only ever inserted):
@@ -651,7 +637,13 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
     }
 
     case "eval": {
-      const { loadSyntheticGolden, runEval } = await import("@marrowhq/core");
+      const { Marrow, Store, loadSyntheticGolden, runEval, runScorecard, withScratchSchema } =
+        await import("@marrowhq/core");
+      // every eval runs in a scratch schema on the same Postgres: seeding and
+      // scoring never touch the real brain.
+      if (rest.includes("--all")) {
+        return withScratchSchema(core.databaseUrl, (scratchUrl) => runScorecard(scratchUrl));
+      }
       const fixture = positional(rest);
       // no fixture: run the bundled golden set. runEval itself refuses an
       // empty case list, so a missing or empty fixture can never print the
@@ -659,25 +651,44 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       const cases = fixture
         ? (JSON.parse(readFileSync(fixture, "utf8")) as import("@marrowhq/core").EvalCase[])
         : loadSyntheticGolden();
-      const report = await runEval(core, cases);
-      return report;
+      return withScratchSchema(core.databaseUrl, async (scratchUrl) => {
+        const scratchStore = new Store(scratchUrl);
+        try {
+          return await runEval(new Marrow(scratchStore), cases);
+        } finally {
+          await scratchStore.close();
+        }
+      });
     }
 
     case "benchmark": {
-      const { runBenchmark, seedBenchmarkBrain } = await import("@marrowhq/core");
-      const corpus = loadBenchmarkCorpus();
-      await seedBenchmarkBrain(core, corpus);
-      const report = await runBenchmark(core, {
-        corpusTexts: corpus.map((d) => d.text),
-        questions: [
-          "What did we decide about onboarding?",
-          "How do users authenticate?",
-          "What payment gateway do we use?",
-          "How long does async export poll?",
-          "How do we catch contradictions in code?",
-        ],
+      const {
+        Marrow,
+        Store,
+        createConceptEmbedding,
+        loadBenchmarkGolden,
+        runBenchmark,
+        seedBenchmarkBrain,
+        withScratchSchema,
+      } = await import("@marrowhq/core");
+      // the one labeled corpus, scored in a scratch schema: the same numbers
+      // as pnpm benchmark and the CI drift gate, never seeded into the brain.
+      const { docs, labeled } = loadBenchmarkGolden();
+      return withScratchSchema(core.databaseUrl, async (scratchUrl) => {
+        const scratchStore = new Store(scratchUrl);
+        const scratchCore = new Marrow(scratchStore, undefined, createConceptEmbedding());
+        try {
+          await seedBenchmarkBrain(scratchCore, docs, { decide: true });
+          return await runBenchmark(scratchCore, {
+            corpusTexts: docs.map((d) => d.text),
+            labeled,
+            k: 4,
+            measureBrief: true,
+          });
+        } finally {
+          await scratchStore.close();
+        }
       });
-      return report;
     }
 
     case "connectors": {
@@ -1224,6 +1235,55 @@ export function formatResult(result: unknown): string {
     const p = m.precision === null ? "n/a" : `${(m.precision * 100).toFixed(1)}%`;
     const d = m.dismissRate === null ? "n/a" : `${(m.dismissRate * 100).toFixed(1)}%`;
     return `Catches surfaced: ${m.surfaced}\nActed on: ${m.actedOn}\nDismissed: ${m.dismissed}\nPrecision: ${p}\nDismiss rate: ${d}`;
+  }
+
+  // eval --all: the combined scorecard.
+  if ("benchmark" in r && "evals" in r) {
+    const card = r as {
+      benchmark: {
+        ratio: number;
+        quality?: { recallAtK: number; noiseRatio: number };
+        brief?: { ratio: number; avgTokens: number };
+        marrow: { avgTokens: number };
+        baseline: { tokens: number; docs: number };
+      };
+      evals: {
+        catch: { precision: number; recall: number; f1: number; cases: number };
+        write: {
+          writePrecision: number;
+          writeRecall: number;
+          falseMemoryRate: number;
+          duplicateRate: number;
+          cases: number;
+        };
+        temporal: { currentStateAccuracy: number; historicalAccuracy: number; cases: number };
+      };
+    };
+    const pct = (n: number): string => `${(n * 100).toFixed(1)}%`;
+    const b = card.benchmark;
+    const lines = [
+      "Marrow scorecard (scratch schema; the real brain was not touched)",
+      "",
+      "Retrieval",
+      `  flat search: ${b.ratio}x fewer tokens than a raw dump (${b.marrow.avgTokens} vs ${b.baseline.tokens})`,
+      ...(b.quality
+        ? [`  recall@k ${pct(b.quality.recallAtK)}, noise ratio ${pct(b.quality.noiseRatio)}`]
+        : []),
+      ...(b.brief
+        ? [`  prepare_task brief: ${b.brief.ratio}x (${b.brief.avgTokens} tokens avg)`]
+        : []),
+      "",
+      "Write quality",
+      `  precision ${pct(card.evals.write.writePrecision)}, recall ${pct(card.evals.write.writeRecall)}`,
+      `  false memories ${pct(card.evals.write.falseMemoryRate)}, duplicates under re-ingest ${pct(card.evals.write.duplicateRate)}`,
+      "",
+      "Temporal truth",
+      `  current-state ${pct(card.evals.temporal.currentStateAccuracy)}, historical ${pct(card.evals.temporal.historicalAccuracy)}`,
+      "",
+      "Drift catch",
+      `  precision ${pct(card.evals.catch.precision)}, recall ${pct(card.evals.catch.recall)}, f1 ${pct(card.evals.catch.f1)}`,
+    ];
+    return lines.join("\n");
   }
 
   // eval report: { precision, recall, f1, cases }.
