@@ -1,0 +1,58 @@
+[
+  {
+    "name": "auth: passwords replaced by magic links",
+    "topic": "how do users sign in",
+    "loser": {
+      "title": "Auth uses shared passwords",
+      "rationale": "legacy shared login from the pilot"
+    },
+    "winner": {
+      "title": "Auth uses magic links, no passwords",
+      "rationale": "password reset tickets were a third of support volume"
+    },
+    "answer": "magic links hold; the password pilot is over",
+    "keywordTopic": "passwords"
+  },
+  {
+    "name": "sessions: 24 hour lifetime replaced by 8 hours",
+    "topic": "session expiry policy",
+    "loser": {
+      "title": "Sessions expire after 24 hours",
+      "rationale": "convenience first"
+    },
+    "winner": {
+      "title": "Sessions expire after 8 hours with idle lock",
+      "rationale": "shared terminal walk-away risk"
+    },
+    "answer": "8 hours with idle lock, decided after the audit",
+    "keywordTopic": "Sessions expire"
+  },
+  {
+    "name": "billing: second payment adapter replaced by stripe only",
+    "topic": "which payment provider do we use",
+    "loser": {
+      "title": "Billing supports Stripe and Paddle",
+      "rationale": "regional coverage experiment"
+    },
+    "winner": {
+      "title": "Billing must use Stripe only",
+      "rationale": "two adapters doubled the dunning bugs"
+    },
+    "answer": "stripe only; the paddle experiment is retired",
+    "keywordTopic": "Billing"
+  },
+  {
+    "name": "retention: hard delete replaced by a 30 day soft delete",
+    "topic": "what happens to deleted projects",
+    "loser": {
+      "title": "Deleted projects purge immediately",
+      "rationale": "storage cost concern"
+    },
+    "winner": {
+      "title": "Deleted projects are recoverable for 30 days, then purged",
+      "rationale": "a hard delete cost the team a week"
+    },
+    "answer": "soft delete for 30 days won; storage cost was noise",
+    "keywordTopic": "Deleted projects"
+  }
+]

@@ -96,6 +96,12 @@ export {
 } from "./semantic-drift.js";
 export { loadSyntheticGolden, runEval, type EvalCase, type EvalReport } from "./eval.js";
 export {
+  loadTemporalGolden,
+  runTemporalEval,
+  type TemporalEvalCase,
+  type TemporalEvalReport,
+} from "./eval-temporal.js";
+export {
   createReplayModel,
   loadWriteGolden,
   runWriteEval,
