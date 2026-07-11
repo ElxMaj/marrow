@@ -53,6 +53,7 @@ import {
   type TranscriptionProvider,
   type VisionProvider,
 } from "./providers/types.js";
+import { type InstructionSmell, instructionSmells } from "./injection.js";
 import { findDuplicateTitles } from "./lint.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
 import { type SynthCounts, synthHeadline } from "./synthesize.js";
@@ -173,6 +174,10 @@ export interface TraceSpan {
   start: number;
   end: number;
   spanText: string;
+  /** Present when the span text looks instruction-shaped (agent directives,
+   *  command execution, role impersonation, exfiltration). Advisory, computed
+   *  at read time: evidence is never mutated, and a smell never blocks a read. */
+  smells?: InstructionSmell[];
 }
 
 export interface TraceResult {
@@ -1714,13 +1719,17 @@ export class Marrow {
     for (const span of node.provenance) {
       const evidence = await this.store.getEvidence(span.evidenceId);
       if (!evidence) continue;
+      const spanText = evidence.text.slice(span.start, span.end);
+      const smells = instructionSmells(spanText);
       spans.push({
         evidenceId: span.evidenceId,
         source: evidence.source,
         createdAt: evidence.createdAt,
         start: span.start,
         end: span.end,
-        spanText: evidence.text.slice(span.start, span.end),
+        spanText,
+        // omitted when clean, so briefs only grow when something fired.
+        ...(smells.length > 0 ? { smells } : {}),
       });
     }
     const first = spans[0];

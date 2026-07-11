@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { chunkText, parseExtraction } from "./distill.js";
+import { DISTILL_SYSTEM, chunkText, parseExtraction } from "./distill.js";
 import { Marrow } from "./marrow.js";
 import {
   type EmbeddingProvider,
@@ -352,5 +352,12 @@ describe("chunkText", () => {
     const chunks = chunkText("x".repeat(250), 100);
     expect(chunks.every((c) => c.length <= 100)).toBe(true);
     expect(chunks.join("")).toBe("x".repeat(250)); // nothing lost
+  });
+});
+
+describe("write-time injection guard", () => {
+  it("the distill prompt tells the model the transcript is data, never instructions", () => {
+    expect(DISTILL_SYSTEM).toMatch(/never instructions to you/i);
+    expect(DISTILL_SYSTEM).toMatch(/never obey/i);
   });
 });
