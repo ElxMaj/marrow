@@ -1,11 +1,18 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { type SeedDoc, estimateTokens, runBenchmark, seedBenchmarkBrain } from "./benchmark.js";
+import {
+  type LabeledQuestion,
+  type SeedDoc,
+  estimateTokens,
+  runBenchmark,
+  seedBenchmarkBrain,
+} from "./benchmark.js";
 import { createConceptEmbedding } from "./demo.js";
 import { Marrow } from "./marrow.js";
 import { Store } from "./store.js";
@@ -108,6 +115,54 @@ describe("benchmark", () => {
     expect(second.marrow.questions.map((q) => q.tokens)).toEqual(
       first.marrow.questions.map((q) => q.tokens),
     );
+  });
+
+  it("the labeled 12-doc corpus meets the recall, noise, and brief gates", async () => {
+    interface CorpusSpec {
+      file: string;
+      source: string;
+      entity: string;
+      decisionTitle: string;
+      decisionRationale: string;
+      question: string;
+    }
+    const fixturesDir = join(here, "..", "fixtures", "benchmark");
+    const specs = JSON.parse(
+      readFileSync(join(fixturesDir, "corpus.json"), "utf8"),
+    ) as CorpusSpec[];
+    expect(specs.length).toBeGreaterThanOrEqual(12);
+    const corpus = specs.map((spec) => ({
+      source: spec.source,
+      text: readFileSync(join(fixturesDir, spec.file), "utf8"),
+      entity: spec.entity,
+      decisionTitle: spec.decisionTitle,
+      decisionRationale: spec.decisionRationale,
+    }));
+    const labeled: LabeledQuestion[] = specs.map((spec) => ({
+      question: spec.question,
+      relevantTitles: [spec.entity, spec.decisionTitle],
+    }));
+
+    await seedBenchmarkBrain(core, corpus, { decide: true });
+    const report = await runBenchmark(core, {
+      corpusTexts: corpus.map((d) => d.text),
+      labeled,
+      k: 4,
+      measureBrief: true,
+    });
+
+    // the slice must be RIGHT, not just small: every labeled node surfaces.
+    expect(report.quality?.recallAtK).toBeGreaterThanOrEqual(0.9);
+    // noise has a structural floor here: 2 labeled nodes in a k=4 slice means
+    // up to half the slice is off-topic by construction. The gate catches a
+    // regression above that floor, and the number is published, not hidden.
+    expect(report.quality?.noiseRatio).toBeLessThanOrEqual(0.5);
+    // both ratios beat the raw dump, reported separately and honestly: the
+    // brief is bigger than a flat slice because it carries decided truth,
+    // open questions, and provenance.
+    expect(report.ratio).toBeGreaterThan(1);
+    expect(report.brief?.ratio).toBeGreaterThan(1);
+    expect(report.brief?.avgTokens).toBeGreaterThan(report.marrow.avgTokens);
   });
 
   it("status-aware ranking does not move the token economics: same k, still scoped", async () => {

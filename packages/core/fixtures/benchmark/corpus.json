@@ -1,0 +1,98 @@
+[
+  {
+    "file": "pfc-gdynia.md",
+    "source": "interviews/pfc-gdynia.md",
+    "entity": "magic link auth",
+    "decisionTitle": "Auth uses magic links, no shared passwords",
+    "decisionRationale": "shared desk terminal, passwords ended up on post-its",
+    "question": "How do users sign in, passwords or magic links?"
+  },
+  {
+    "file": "sessions.md",
+    "source": "standups/sessions.md",
+    "entity": "session lifetime",
+    "decisionTitle": "Sessions expire after 8 hours, lock at 15 minutes idle",
+    "decisionRationale": "shared terminal, walk-away risk",
+    "question": "What is the session expiry and idle timeout policy?"
+  },
+  {
+    "file": "billing.md",
+    "source": "notes/billing.md",
+    "entity": "billing webhooks",
+    "decisionTitle": "Billing webhooks retry with backoff, idempotent by event id",
+    "decisionRationale": "provider retries cause duplicate deliveries",
+    "question": "How do billing webhooks handle retries and duplicates?"
+  },
+  {
+    "file": "exports.md",
+    "source": "notes/exports.md",
+    "entity": "csv export",
+    "decisionTitle": "CSV exports run async and the client polls every 5 seconds",
+    "decisionRationale": "synchronous downloads timed out above fifty thousand rows",
+    "question": "How does a large CSV export get delivered?"
+  },
+  {
+    "file": "onboarding.md",
+    "source": "standups/onboarding.md",
+    "entity": "onboarding checklist",
+    "decisionTitle": "Onboarding is fully self serve, no sales call",
+    "decisionRationale": "sales-assisted setup dragged activation down",
+    "question": "What did we decide about self serve signup and activation?"
+  },
+  {
+    "file": "permissions.md",
+    "source": "notes/permissions.md",
+    "entity": "role permissions",
+    "decisionTitle": "Roles stay coarse: admin, editor, viewer only",
+    "decisionRationale": "no custom RBAC matrix this year",
+    "question": "Which roles and access levels exist for a seat?"
+  },
+  {
+    "file": "offline.md",
+    "source": "interviews/offline.md",
+    "entity": "offline sync",
+    "decisionTitle": "Mobile edits sync last-writer-wins with a conflict log",
+    "decisionRationale": "field teams edit with no signal and cannot lose edits",
+    "question": "How do offline mobile edits sync and handle conflicts?"
+  },
+  {
+    "file": "retention.md",
+    "source": "notes/retention.md",
+    "entity": "data retention",
+    "decisionTitle": "Deleted projects are recoverable for 30 days, then purged",
+    "decisionRationale": "a hard delete cost the team a week",
+    "question": "How long are deleted projects recoverable before purge?"
+  },
+  {
+    "file": "deploys.md",
+    "source": "standups/deploys.md",
+    "entity": "canary deploys",
+    "decisionTitle": "Deploys ship behind a canary flag with 5 minute rollback",
+    "decisionRationale": "an all-or-nothing rollout took the editor down",
+    "question": "How do deploys roll out and how fast is rollback?"
+  },
+  {
+    "file": "pricing.md",
+    "source": "notes/pricing.md",
+    "entity": "pricing trial",
+    "decisionTitle": "Trials are 14 days with no credit card up front",
+    "decisionRationale": "card-first trials converted worse",
+    "question": "Does the trial require a credit card and how long is it?"
+  },
+  {
+    "file": "notifications.md",
+    "source": "standups/notifications.md",
+    "entity": "notification digest",
+    "decisionTitle": "Notifications batch into one daily digest",
+    "decisionRationale": "per-event emails trained users to filter us out",
+    "question": "Do we send per-event emails or a daily digest?"
+  },
+  {
+    "file": "relevance.md",
+    "source": "notes/search-relevance.md",
+    "entity": "search ranking",
+    "decisionTitle": "Search ranks decided facts above open proposals",
+    "decisionRationale": "stale proposals ranked above settled truth",
+    "question": "How does search order decided facts versus open proposals?"
+  }
+]
