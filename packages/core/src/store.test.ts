@@ -582,6 +582,28 @@ describe("Store goals", () => {
     ]);
     expect((await store.getOpenGoals()).map((g) => g.id)).toEqual([openProduct.id]);
   });
+
+  it("promoteToDecided stamps verified_at; a proposed node carries none", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/fresh.md" });
+    const dec = await store.insertDecision({
+      title: "use passkeys",
+      rationale: "phishing resistance",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    expect((await store.getDecision(dec.id))?.verifiedAt).toBeUndefined();
+    expect((await store.getDecision(dec.id))?.expiresAt).toBeUndefined();
+
+    await store.promoteToDecided(dec.id, "decision", { evidenceId: ev.id, start: 0, end: 4 });
+
+    const after = await store.getDecision(dec.id);
+    expect(after?.status).toBe("decided");
+    expect(after?.verifiedAt).toBeDefined();
+    // no TTL configured, so a promoted fact does not carry an expiry
+    expect(after?.expiresAt).toBeUndefined();
+  });
 });
 
 describe("Store edges (the knowledge graph)", () => {
