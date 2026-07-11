@@ -15,10 +15,10 @@ function keyFrom(secret: string): Buffer {
   return scryptSync(secret, "marrow.connector.secret.v1", 32);
 }
 
-function requireSecret(secret: string | undefined, op: string): string {
+function requireSecret(secret: string | undefined): string {
   if (!secret) {
     throw new Error(
-      `${op}: MARROW_SECRET_KEY is not set. Set it to a long random string to store connector secrets.`,
+      "MARROW_SECRET_KEY is not set. Set it to a long random string to store connector secrets.",
     );
   }
   return secret;
@@ -30,7 +30,7 @@ export function encryptSecret(
   plaintext: string,
   secret: string | undefined = process.env.MARROW_SECRET_KEY,
 ): string {
-  const key = keyFrom(requireSecret(secret, "encryptSecret"));
+  const key = keyFrom(requireSecret(secret));
   const iv = randomBytes(12);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -44,7 +44,7 @@ export function decryptSecret(
   payload: string,
   secret: string | undefined = process.env.MARROW_SECRET_KEY,
 ): string {
-  const key = keyFrom(requireSecret(secret, "decryptSecret"));
+  const key = keyFrom(requireSecret(secret));
   const parts = payload.split(":");
   const [version, ivB64, tagB64, ctB64] = parts;
   if (parts.length !== 4 || version !== VERSION || !ivB64 || !tagB64 || !ctB64) {
