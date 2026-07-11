@@ -6,8 +6,10 @@
 # manual run), and it appends once and exits.
 #
 # It only appends evidence. Distillation and the human question loop stay
-# separate on purpose: run `marrow synthesize` and `marrow lint` on a schedule
-# (see .github/workflows/maintenance.yml) to keep the brain current.
+# separate on purpose: run `marrow distill --pending` on a schedule (see
+# .github/workflows/maintenance.yml) to compile appended sessions into
+# searchable truth, then `marrow synthesize` and `marrow lint` to keep the
+# brain current. `marrow truth` shows the backlog any time.
 #
 # Usage:
 #   scripts/session-end-hook.sh path/to/transcript.md
@@ -26,7 +28,7 @@ source_label="session:${ts}"
 # read from the given file, or stdin when none is passed.
 input="${1:--}"
 
-# append only (--no-distill): the nightly compile and the human loop turn this
-# raw session into distilled truth later. This keeps the hook fast and needs no
-# model key.
+# append only (--no-distill): a scheduled `marrow distill --pending` and the
+# human loop turn this raw session into distilled truth later. This keeps the
+# hook fast and needs no model key.
 ${MARROW} add "${input}" --source "${source_label}" --no-distill

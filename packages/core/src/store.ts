@@ -994,6 +994,55 @@ export class Store {
     }));
   }
 
+  /** Evidence rows nothing has distilled yet: no provenance span cites them and
+   *  no successful distill run recorded them. The run check matters because a
+   *  row that distilled to zero nodes leaves no provenance either, and evidence
+   *  itself is immutable so it cannot carry a distilled flag. Newest first, so
+   *  a drain settles the most recent session before ancient leftovers. */
+  async undistilledEvidence(limit = 50): Promise<Evidence[]> {
+    const res = await this.pool.query<{
+      id: string;
+      text: string;
+      source: string;
+      created_at: Date;
+    }>(
+      `select id, text, source, created_at from evidence e
+        where not exists (select 1 from provenance p where p.evidence_id = e.id)
+          and not exists (
+            select 1 from run r
+             where r.kind = 'distill' and r.status = 'ok'
+               and r.metadata->>'evidenceId' = e.id)
+        order by created_at desc
+        limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      kind: "evidence" as const,
+      text: row.text,
+      source: row.source,
+      createdAt: iso(row.created_at),
+    }));
+  }
+
+  /** How deep the backlog is and how old its oldest row is, for the truth and
+   *  synthesize surfaces. Same predicate as undistilledEvidence. */
+  async countUndistilledEvidence(): Promise<{ count: number; oldestCreatedAt?: string }> {
+    const res = await this.pool.query<{ count: string; oldest: Date | null }>(
+      `select count(*)::text as count, min(created_at) as oldest from evidence e
+        where not exists (select 1 from provenance p where p.evidence_id = e.id)
+          and not exists (
+            select 1 from run r
+             where r.kind = 'distill' and r.status = 'ok'
+               and r.metadata->>'evidenceId' = e.id)`,
+    );
+    const row = res.rows[0];
+    return {
+      count: Number(row?.count ?? 0),
+      ...(row?.oldest ? { oldestCreatedAt: iso(row.oldest) } : {}),
+    };
+  }
+
   /** Remove a duplicate distilled entity after its provenance has been merged
    *  into the canonical node. distilled nodes are mergeable; evidence is not. */
   async deleteEntity(entityId: string): Promise<void> {

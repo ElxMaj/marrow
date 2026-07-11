@@ -14,7 +14,6 @@ import { JiraConnector } from "./connectors/jira.js";
 import { GranolaConnector } from "./connectors/granola.js";
 import { OtterConnector } from "./connectors/otter.js";
 import { decryptSecret } from "./crypto.js";
-import { type DistillEnqueuer } from "./marrow.js";
 import { type Store } from "./store.js";
 
 // The sync engine turns configured connectors into a steady, automatic flow of
@@ -178,7 +177,6 @@ export type ConnectorKind = (typeof CONNECTOR_KINDS)[number];
 export interface SyncEngineDeps {
   store: Store;
   /** when wired, each newly ingested item is enqueued for distillation. */
-  enqueuer?: DistillEnqueuer | undefined;
   /** the key that decrypts stored connector secrets. defaults to env. */
   secretKey?: string | undefined;
 }
@@ -251,11 +249,10 @@ export class SyncEngine {
           itemsSkipped += 1;
           continue;
         }
-        const evidence = await this.deps.store.insertEvidence({
+        await this.deps.store.insertEvidence({
           text: draft.text,
           source: draft.source,
         });
-        if (this.deps.enqueuer) await this.deps.enqueuer.enqueueDistill(evidence.id);
         itemsIngested += 1;
       }
     } catch (err) {

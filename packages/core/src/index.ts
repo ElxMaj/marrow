@@ -5,7 +5,6 @@ export {
   Marrow,
   createMarrow,
   type IngestInput,
-  type DistillEnqueuer,
   type TraceSpan,
   type TraceResult,
   type ProposeInput,
@@ -24,14 +23,6 @@ export {
 export { skepticReasons, verdictFor, type VerifyReason, type VerifyVerdict } from "./skeptic.js";
 export { findDuplicateTitles } from "./lint.js";
 export { synthHeadline, type SynthCounts } from "./synthesize.js";
-export {
-  Queue,
-  DISTILL_QUEUE,
-  type DistillJob,
-  type JobState,
-  type EnqueueOptions,
-} from "./queue.js";
-export { Worker } from "./worker.js";
 export {
   Store,
   createStore,

@@ -99,7 +99,7 @@ That saving is measured, not projected. `marrow benchmark` compares a full-conte
 
 - TypeScript everywhere, Node runtime.
 - Postgres with pgvector as the single store. Graph as tables plus embeddings in one database.
-- Pg-boss for the ingestion and distillation queue. No Redis, Kafka or external broker.
+- Distillation runs inline when a model is configured, or on your schedule via `marrow distill --pending`. No Redis, Kafka, queue service or external broker.
 - Official MCP TypeScript SDK for the server.
 - Model and embeddings behind a thin provider interface. Default Claude, OpenAI compatible, and local (Ollama / LM Studio) all supported.
 

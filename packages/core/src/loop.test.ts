@@ -500,6 +500,19 @@ describe("agent decision gate and truth maintenance", () => {
     expect(brief.nextActions.length).toBeGreaterThan(0);
     expect(brief.sourceOfTruth.decidedGoals[0]?.provenance[0]?.source).toBeDefined();
   });
+
+  it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
+    // a session-end hook write: evidence appended, never distilled.
+    await store.insertEvidence({
+      text: "raw transcript from a finished session",
+      source: "session/2026-07-11T10:00:00Z",
+    });
+    const brief = await core.maintainTruth();
+    expect(brief.undistilledBacklog.count).toBeGreaterThanOrEqual(1);
+    expect(brief.undistilledBacklog.sample.length).toBeGreaterThanOrEqual(1);
+    expect(brief.undistilledBacklog.oldestCreatedAt).toBeDefined();
+    expect(brief.nextActions.join(" ")).toContain("marrow distill --pending");
+  });
 });
 
 // the goal kind flows through the same propose -> human-promote machinery as a

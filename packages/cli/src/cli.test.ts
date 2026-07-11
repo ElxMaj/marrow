@@ -457,6 +457,31 @@ describe("cli", () => {
     expect(out.nodes.some((n) => n.kind === "entity")).toBe(true);
   });
 
+  it("distill --pending drains the backlog newest-first and reports the remainder", async () => {
+    const id = await core.ingest({ text: transcript, source: "session/pending.md" });
+    const out = (await runCommand(core, ["distill", "--pending", "--limit", "3"])) as {
+      distilled: { evidenceId: string; source: string; nodes: number }[];
+      remaining: number;
+    };
+    expect(out.distilled.map((d) => d.evidenceId)).toContain(id);
+    const mine = out.distilled.find((d) => d.evidenceId === id);
+    expect(mine?.nodes).toBeGreaterThanOrEqual(1);
+    expect(out.remaining).toBeGreaterThanOrEqual(0);
+    expect(formatResult(out)).toMatch(/remaining/i);
+
+    // drained rows leave the backlog: a second pass does not touch them again.
+    const again = (await runCommand(core, ["distill", "--pending", "--limit", "3"])) as {
+      distilled: { evidenceId: string }[];
+    };
+    expect(again.distilled.map((d) => d.evidenceId)).not.toContain(id);
+  });
+
+  it("distill --pending fails loud when a backlog exists and no model is configured", async () => {
+    const bare = new Marrow(store); // no model or embedding
+    await bare.ingest({ text: "raw hook output", source: "session/no-model.md" });
+    await expect(runCommand(bare, ["distill", "--pending"])).rejects.toThrow(/MARROW_API_KEY/);
+  });
+
   it("answer output names what was decided instead of dumping JSON", async () => {
     await core.ingestAndDistill({ text: transcript, source: "x" });
     const q = (await runCommand(core, ["questions"])) as { questions: Question[] };
@@ -518,7 +543,7 @@ describe("cli", () => {
 
   it("ingest --audio transcribes bytes through the provider with source and media type", async () => {
     const transcription = new FakeTranscription();
-    const mediaCore = new Marrow(store, undefined, undefined, undefined, undefined, transcription);
+    const mediaCore = new Marrow(store, undefined, undefined, undefined, transcription);
     const file = join(tmpdir(), "marrow-voice.mp3");
     writeFileSync(file, Buffer.from([1, 2, 3, 4]));
 
@@ -541,7 +566,7 @@ describe("cli", () => {
 
   it("ingest --image describes bytes through the provider with source and media type", async () => {
     const vision = new FakeVision();
-    const mediaCore = new Marrow(store, undefined, undefined, undefined, vision);
+    const mediaCore = new Marrow(store, undefined, undefined, vision);
     const file = join(tmpdir(), "marrow-whiteboard.jpg");
     writeFileSync(file, Buffer.from([9, 8, 7]));
 
@@ -1214,6 +1239,13 @@ describe("cli", () => {
         gapQuestions: [],
         pendingCatches: [],
         connectorHealth: [{ name: "slack", kind: "slack", enabled: true, status: "never" }],
+        undistilledBacklog: {
+          count: 2,
+          oldestCreatedAt: "2026-07-01T08:00:00.000Z",
+          sample: [
+            { id: "ev_9", source: "session/2026-07-10", createdAt: "2026-07-10T18:00:00.000Z" },
+          ],
+        },
         nextActions: ["Run `marrow sync slack` or check the connector."],
       }),
     } as unknown as Marrow;
