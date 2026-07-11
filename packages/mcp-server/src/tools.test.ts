@@ -78,7 +78,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await admin.query(
-    "truncate catch_events, verification, provenance, embedding, edge, entity, decision, question, goal restart identity cascade",
+    "truncate catch_events, verification, provenance, embedding, edge, entity, decision, question, goal, connector_config, connector_state restart identity cascade",
   );
 });
 
