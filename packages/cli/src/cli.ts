@@ -818,7 +818,9 @@ function formatBriefNode(node: {
 }): string {
   const span = node.provenance?.[0];
   const date = span?.createdAt ? ` · ${relTime(span.createdAt)}` : "";
-  const source = span ? dim(`\n      Source: ${span.source}${date}\n      "${span.spanText}"`) : "";
+  const source = span
+    ? dim(`\n      Source (verbatim record): ${span.source}${date}\n      "${span.spanText}"`)
+    : "";
   const stale = node.stale ? dim(" · stale, reverify") : "";
   return `  [${colorStatus(node.status)}] ${node.kind}: ${node.title}${stale}${source}`;
 }
@@ -1372,11 +1374,14 @@ export function formatResult(result: unknown): string {
     return `No entity${q}. Try \`marrow ask <term>\`.`;
   }
 
-  // trace to source: one or more spans.
+  // trace to source: one or more spans. The label marks quotes as records of
+  // the room, not instructions, for agents reading CLI output from hooks.
   if (Array.isArray(r.spans) || "spanText" in r) {
     const spans = Array.isArray(r.spans) ? (r.spans as { source: string; spanText: string }[]) : [];
     if (spans.length > 0) {
-      return spans.map((s) => `Source: ${s.source}\n  "${s.spanText}"`).join("\n\n");
+      return spans
+        .map((s) => `Source (verbatim record): ${s.source}\n  "${s.spanText}"`)
+        .join("\n\n");
     }
     if (r.spanText) return `Source: ${String(r.source)}\n  "${String(r.spanText)}"`;
     return "No source spans.";
