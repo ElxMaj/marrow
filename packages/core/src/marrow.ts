@@ -26,6 +26,7 @@ import {
 } from "./distill.js";
 import { type DiffHunk, readGitDiff } from "./drift.js";
 import {
+  decisionsConcerningEntity,
   decisionsConflict,
   entityHasDecision,
   goalDriftSignal,
@@ -531,6 +532,18 @@ export class Marrow {
           confidence: { value: 0.5, source: "model" },
           provenance: node.provenance,
         });
+        // record the conflict as a graph edge too, so it is walkable. an edge
+        // carries no status: the question above is still what a human resolves.
+        await this.store.insertEdge({
+          fromId: node.id,
+          fromKind: "decision",
+          toId: other.id,
+          toKind: "decision",
+          relation: "conflicts_with",
+          confidence: 0.5,
+          source: "rule",
+          evidenceId,
+        });
         break;
       }
     }
@@ -540,6 +553,20 @@ export class Marrow {
     const openQuestions = await this.store.getOpenQuestions();
     for (const node of await this.store.getNodesForEvidence(evidenceId)) {
       if (node.kind !== "entity") continue;
+      // concerns edges: link the entity to every decision that is about it, so
+      // retrieval can walk from a feature to the choices made about it.
+      for (const decision of decisionsConcerningEntity(node, decisions)) {
+        await this.store.insertEdge({
+          fromId: node.id,
+          fromKind: "entity",
+          toId: decision.id,
+          toKind: "decision",
+          relation: "concerns",
+          confidence: 0.6,
+          source: "rule",
+          evidenceId,
+        });
+      }
       if (entityHasDecision(node, decisions)) continue;
       const alreadyAsked = openQuestions.some(
         (q) => (q.relatesTo ?? []).includes(node.id) && /never decided|specify it/i.test(q.prompt),
@@ -572,6 +599,16 @@ export class Marrow {
           confidence: { value: 0.4, source: "model" },
           provenance: node.provenance,
         });
+        await this.store.insertEdge({
+          fromId: node.id,
+          fromKind: "goal",
+          toId: other.id,
+          toKind: "goal",
+          relation: "conflicts_with",
+          confidence: 0.4,
+          source: "rule",
+          evidenceId,
+        });
         break;
       }
     }
@@ -582,7 +619,20 @@ export class Marrow {
     const goalGapQuestions = await this.store.getOpenQuestions();
     for (const node of await this.store.getNodesForEvidence(evidenceId)) {
       if (node.kind !== "goal") continue;
-      if (node.entityId) continue;
+      if (node.entityId) {
+        // serves edge: make the existing goal -> entity link walkable.
+        await this.store.insertEdge({
+          fromId: node.id,
+          fromKind: "goal",
+          toId: node.entityId,
+          toKind: "entity",
+          relation: "serves",
+          confidence: 0.9,
+          source: "rule",
+          evidenceId,
+        });
+        continue;
+      }
       const alreadyAsked = goalGapQuestions.some(
         (q) => (q.relatesTo ?? []).includes(node.id) && /feature or product/i.test(q.prompt),
       );
@@ -1577,6 +1627,25 @@ export class Marrow {
       await this.store.supersede(node.id, node.kind);
       const updated = await this.store.getNode(node.id);
       if (updated) superseded.push(updated);
+    }
+
+    // record the supersede as a graph edge (winner -> loser). this is the one
+    // human-authored edge: the answer's evidence justifies it. the promote and
+    // supersede above already set the statuses; the edge changes nothing.
+    const winner = toPromote[0];
+    if (winner && toSupersede.length > 0) {
+      for (const loser of toSupersede) {
+        await this.store.insertEdge({
+          fromId: winner.id,
+          fromKind: winner.kind,
+          toId: loser.id,
+          toKind: loser.kind,
+          relation: "supersedes",
+          confidence: 1,
+          source: "human",
+          evidenceId: evidence.id,
+        });
+      }
     }
 
     // Answering can spawn follow-up questions: a node just promoted to decided

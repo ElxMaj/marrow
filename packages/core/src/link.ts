@@ -274,6 +274,23 @@ export function goalsConflict(
 }
 
 /**
+ * The decisions that mention a salient word of the entity's name. These are the
+ * `concerns` edges: an entity is the subject of a decision. Empty when the entity
+ * has nothing distinctive to match on, or when no decision is about it (a gap).
+ */
+export function decisionsConcerningEntity<T extends Pick<Decision, "title" | "rationale">>(
+  entity: Pick<Entity, "name">,
+  decisions: T[],
+): T[] {
+  const terms = [...salientTerms(entity.name)];
+  if (terms.length === 0) return [];
+  return decisions.filter((decision) => {
+    const text = normalizeTitle(`${decision.title} ${decision.rationale}`);
+    return terms.some((term) => text.includes(term));
+  });
+}
+
+/**
  * True if any decision references a salient word of the entity's name. When it
  * is false, the entity was mentioned but nothing was decided about it: a gap.
  */
@@ -283,8 +300,5 @@ export function entityHasDecision(
 ): boolean {
   const terms = [...salientTerms(entity.name)];
   if (terms.length === 0) return true; // nothing distinctive to gap on
-  return decisions.some((decision) => {
-    const text = normalizeTitle(`${decision.title} ${decision.rationale}`);
-    return terms.some((term) => text.includes(term));
-  });
+  return decisionsConcerningEntity(entity, decisions).length > 0;
 }

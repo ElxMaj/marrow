@@ -68,6 +68,7 @@ export { scanRepo, type RepoCandidate } from "./onboard.js";
 export { readRepoCode, readGitDiff, parseGitDiff, type DiffHunk, type DiffScope } from "./drift.js";
 export {
   decisionsConflict,
+  decisionsConcerningEntity,
   entityHasDecision,
   negatedTerms,
   affirmedTerms,

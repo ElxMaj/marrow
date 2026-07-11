@@ -12,7 +12,12 @@ import {
   type ModelProvider,
 } from "./providers/types.js";
 import { Store } from "./store.js";
-import { decisionSignals, goalDriftSignal, ruleDriftSignal } from "./link.js";
+import {
+  decisionSignals,
+  decisionsConcerningEntity,
+  goalDriftSignal,
+  ruleDriftSignal,
+} from "./link.js";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://marrow:marrow@localhost:5432/marrow";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,7 +109,7 @@ afterAll(async () => {
 beforeEach(async () => {
   model.reset();
   await admin.query(
-    "truncate provenance, embedding, entity, decision, question, goal restart identity cascade",
+    "truncate edge, provenance, embedding, entity, decision, question, goal restart identity cascade",
   );
 });
 
@@ -214,6 +219,143 @@ describe("link, merge, conflict and gap", () => {
       (q) => (q.relatesTo ?? []).includes(goal.id) && /feature or product/i.test(q.prompt),
     );
     expect(after).toHaveLength(1);
+  });
+});
+
+describe("edge extraction (the knowledge graph)", () => {
+  it("decisionsConcerningEntity returns the decisions that mention the entity", () => {
+    const matches = decisionsConcerningEntity({ name: "checkout" }, [
+      { title: "checkout uses one-click", rationale: "fewer steps" },
+      { title: "login uses passkeys", rationale: "" },
+    ]);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.title).toBe("checkout uses one-click");
+  });
+
+  it("writes a concerns edge from an entity to a decision about it, status unchanged", async () => {
+    const ev = await store.insertEvidence({
+      text: "checkout should be one click",
+      source: "room/e.md",
+    });
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 8 }],
+    });
+    const dec = await store.insertDecision({
+      title: "checkout uses one-click",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 8 }],
+    });
+
+    await core.linkAndMerge(ev.id);
+
+    const concerns = (await store.edgesFor(ent.id)).find((e) => e.relation === "concerns");
+    expect(concerns).toBeDefined();
+    expect(concerns?.fromId).toBe(ent.id);
+    expect(concerns?.toId).toBe(dec.id);
+    expect(concerns?.source).toBe("rule");
+    // the edge changes no node status
+    expect((await core.getEntity(ent.id))?.status).toBe("open");
+    expect((await core.getDecision(dec.id))?.status).toBe("decided");
+  });
+
+  it("writes a serves edge from a goal to the entity it serves", async () => {
+    const ev = await store.insertEvidence({ text: "fast checkout goal", source: "room/g.md" });
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    const goal = await store.insertGoal({
+      title: "sub-second checkout",
+      goalType: "product",
+      entityId: ent.id,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+
+    await core.linkAndMerge(ev.id);
+
+    const serves = (await store.edgesFor(goal.id)).find((e) => e.relation === "serves");
+    expect(serves).toBeDefined();
+    expect(serves?.fromId).toBe(goal.id);
+    expect(serves?.toId).toBe(ent.id);
+  });
+
+  it("writes a conflicts_with edge between two conflicting decisions", async () => {
+    const ev = await store.insertEvidence({
+      text: "passwords vs magic links",
+      source: "room/c.md",
+    });
+    await store.insertDecision({
+      title: "auth uses passwords",
+      rationale: "legacy",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+    const d2 = await store.insertDecision({
+      title: "auth uses no passwords, magic links only",
+      rationale: "passwordless",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+
+    await core.linkAndMerge(ev.id);
+
+    const conflict = (await store.edgesFor(d2.id)).find((e) => e.relation === "conflicts_with");
+    expect(conflict).toBeDefined();
+    expect(conflict?.source).toBe("rule");
+  });
+
+  it("writes a human supersedes edge when an answer chooses between conflicting decisions", async () => {
+    const ev = await store.insertEvidence({
+      text: "passwords or magic links",
+      source: "room/s.md",
+    });
+    const d1 = await store.insertDecision({
+      title: "auth uses passwords",
+      rationale: "legacy",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+    const d2 = await store.insertDecision({
+      title: "auth uses magic links, no passwords",
+      rationale: "passwordless",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+    const q = await store.insertQuestion({
+      prompt: "which one holds?",
+      relatesTo: [d1.id, d2.id],
+      status: "open",
+      confidence: { value: 0.5, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 9 }],
+    });
+
+    await core.answer(q.id, "magic links win", { decide: d2.id });
+
+    const supersedes = (await store.edgesFor(d2.id)).find((e) => e.relation === "supersedes");
+    expect(supersedes).toBeDefined();
+    expect(supersedes?.fromId).toBe(d2.id);
+    expect(supersedes?.toId).toBe(d1.id);
+    expect(supersedes?.source).toBe("human");
+    expect((await core.getDecision(d2.id))?.status).toBe("decided");
+    expect((await core.getDecision(d1.id))?.status).toBe("superseded");
   });
 });
 
