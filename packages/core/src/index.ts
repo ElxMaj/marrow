@@ -94,7 +94,7 @@ export {
   semanticDriftCheck,
   type SemanticDriftCandidate,
 } from "./semantic-drift.js";
-export { runEval, type EvalCase, type EvalReport } from "./eval.js";
+export { loadSyntheticGolden, runEval, type EvalCase, type EvalReport } from "./eval.js";
 export { runBenchmark, seedBenchmarkBrain, type SeedDoc } from "./benchmark.js";
 export {
   EmailConnector,

@@ -188,6 +188,18 @@ async function runCliChecks(appDir, databaseUrl) {
     throw new Error("packed CLI truth missed connector health");
   }
 
+  // eval with no fixture must run the BUNDLED golden set from the packed
+  // tarball: proves the fixture ships and the empty-run guard never fires.
+  const evalOut = await run(marrow, ["eval"], { cwd: appDir, env });
+  if (!/precision/i.test(evalOut)) {
+    throw new Error("packed CLI eval did not print a scorecard");
+  }
+  // the golden set's case names must appear: a scorecard without cases is the
+  // fake empty run this step exists to prevent.
+  if (!evalOut.includes("auth magic links vs password")) {
+    throw new Error("packed CLI eval did not run the bundled golden set");
+  }
+
   const repoDir = await mkdtemp(join(tmpdir(), "marrow-packed-repo-"));
   try {
     await run("git", ["init", "-q"], { cwd: repoDir });

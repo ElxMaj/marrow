@@ -271,7 +271,7 @@ Bootstrap / maintain:
   accept <questionId> --text "..."      Record that you acted on a catch
   metrics [--since ISO] [--until ISO] [--include-synthetic]
                               Catch precision and dismiss rate from events
-  eval [fixture-path]         Run the golden-set eval harness
+  eval [fixture-path]         Run the golden-set eval harness (bundled set by default)
   benchmark                   Run the token-reduction benchmark
 
 Connectors and automatic data flow (evidence is append only, only ever inserted):
@@ -651,12 +651,15 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
     }
 
     case "eval": {
-      const { runEval } = await import("@marrowhq/core");
+      const { loadSyntheticGolden, runEval } = await import("@marrowhq/core");
       const fixture = positional(rest);
+      // no fixture: run the bundled golden set. runEval itself refuses an
+      // empty case list, so a missing or empty fixture can never print the
+      // fake perfect 100 percent scorecard again.
       const cases = fixture
         ? (JSON.parse(readFileSync(fixture, "utf8")) as import("@marrowhq/core").EvalCase[])
-        : undefined;
-      const report = await runEval(core, cases ?? []);
+        : loadSyntheticGolden();
+      const report = await runEval(core, cases);
       return report;
     }
 
