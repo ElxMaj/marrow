@@ -1445,6 +1445,48 @@ export class Store {
     }));
   }
 
+  /** The supersedes chain through a node: every replacement step reachable by
+   *  walking ONLY relation='supersedes' edges in both directions (a winner
+   *  points at the loser it replaced). Returns the raw steps with their dates
+   *  and the answer evidence that justified each; bounded by depth and cap so
+   *  a pathological chain cannot flood a read. */
+  async supersedesChain(
+    nodeId: string,
+    maxDepth = 10,
+    cap = 50,
+  ): Promise<{ fromId: string; toId: string; createdAt: string; evidenceId?: string }[]> {
+    const res = await this.pool.query<{
+      from_id: string;
+      to_id: string;
+      created_at: Date;
+      evidence_id: string | null;
+    }>(
+      `with recursive chain(id, depth) as (
+         select $1::text, 0
+         union
+         select
+           case when e.from_id = chain.id then e.to_id else e.from_id end,
+           chain.depth + 1
+           from edge e
+           join chain on (e.from_id = chain.id or e.to_id = chain.id)
+          where e.relation = 'supersedes' and chain.depth < $2
+       )
+       select distinct e.from_id, e.to_id, e.created_at, e.evidence_id
+         from edge e
+        where e.relation = 'supersedes'
+          and (e.from_id in (select id from chain) or e.to_id in (select id from chain))
+        order by e.created_at asc
+        limit $3`,
+      [nodeId, maxDepth, cap],
+    );
+    return res.rows.map((row) => ({
+      fromId: row.from_id,
+      toId: row.to_id,
+      createdAt: iso(row.created_at),
+      ...(row.evidence_id !== null ? { evidenceId: row.evidence_id } : {}),
+    }));
+  }
+
   /** Every edge touching a node, both directions, bounded. For the neighbor tool
    *  and the console map. */
   async edgesFor(nodeId: string, limit = 200): Promise<Edge[]> {

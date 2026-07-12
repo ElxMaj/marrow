@@ -651,6 +651,58 @@ describe("agent decision gate and truth maintenance", () => {
     expect(forced.status).toBe("retracted");
   });
 
+  it("getHistory lays out a 3-link replacement chain with dates, reasons, and the head", async () => {
+    const ev = await store.insertEvidence({
+      text: "session policy debates over time",
+      source: "room/hist.md",
+    });
+    const span = [{ evidenceId: ev.id, start: 0, end: 14 }];
+    const mk = async (title: string) =>
+      core.proposeNode({ kind: "decision", title, provenance: span }) as Promise<{ id: string }>;
+    const a = await mk("Sessions last 72 hours");
+    // promote A through the loop, then replace A with B, then B with C.
+    const confirmA = await core.proposeNode({
+      kind: "question",
+      prompt: "confirm: 72 hours?",
+      relatesTo: [a.id],
+      provenance: span,
+    });
+    await core.answer(confirmA.id, "confirmed at the time");
+    const b = await mk("Sessions last 24 hours");
+    const conflictAB = await core.proposeNode({
+      kind: "question",
+      prompt: "conflict: 72 vs 24?",
+      relatesTo: [b.id, a.id],
+      provenance: span,
+    });
+    await core.answer(conflictAB.id, "the audit shortened it to 24", { decide: b.id });
+    const c = await mk("Sessions last 8 hours with idle lock");
+    const conflictBC = await core.proposeNode({
+      kind: "question",
+      prompt: "conflict: 24 vs 8?",
+      relatesTo: [c.id, b.id],
+      provenance: span,
+    });
+    await core.answer(conflictBC.id, "shared terminals forced 8 with idle lock", { decide: c.id });
+
+    // the lineage reads the same from every link in the chain.
+    for (const probe of [a.id, b.id, c.id]) {
+      const history = await core.getHistory(probe);
+      expect(history.entries.map((e) => e.title)).toEqual([
+        "Sessions last 72 hours",
+        "Sessions last 24 hours",
+        "Sessions last 8 hours with idle lock",
+      ]);
+      expect(history.entries[0]?.supersededAt).toBeDefined();
+      expect(history.entries[0]?.reason).toContain("audit shortened");
+      expect(history.entries[1]?.reason).toContain("idle lock");
+      expect(history.entries[2]?.current).toBe(true);
+      expect(history.entries[2]?.status).toBe("decided");
+      // no question endpoint ever pollutes a chain.
+      expect(history.entries.every((e) => e.kind === "decision")).toBe(true);
+    }
+  });
+
   it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
     // a session-end hook write: evidence appended, never distilled.
     await store.insertEvidence({
