@@ -1,0 +1,66 @@
+name: Feature request
+description: Propose a change to Marrow, starting from the problem it solves.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose an idea. Start with the problem, not the solution, so we can weigh the change on its own terms.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem this would solve
+      description: What are you trying to do today, and where does Marrow get in the way? Describe the pain, not the fix.
+      placeholder: When I run a task through the MCP server, I cannot tell which facts were used because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: What should happen instead? Describe the behavior you want, with an example if you have one.
+      placeholder: prepare_task should return the provenance span for each fact it walked, so...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this touch?
+      description: Pick the part of Marrow most affected. Leave it to us if you are not sure.
+      options:
+        - CLI
+        - MCP server
+        - Web console
+        - Core
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: guardrails
+    attributes:
+      label: Guardrails check
+      description: |
+        Marrow holds a few rules that do not bend. Please note whether your idea respects them:
+
+        - One Postgres with pgvector is the entire infrastructure. No graph database, no queue, no daemon.
+        - Evidence is append-only and immutable. There is no editing after the insert.
+        - Agents propose and humans promote. No MCP tool writes any status; only a human reaches `decided`.
+        - Context is task-scoped. Nothing returns the whole brain.
+
+        Tell us how your idea sits with these, or which one it might strain.
+      placeholder: This stays within one Postgres and only reads evidence, so it respects all four. The one I am unsure about is...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: prior-search
+    attributes:
+      label: Prior search
+      options:
+        - label: I searched existing issues and discussions and did not find this already proposed.
+          required: true
