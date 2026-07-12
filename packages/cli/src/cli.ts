@@ -5,6 +5,8 @@ import {
   type Distilled,
   type Marrow,
   type RunFilter,
+  loadPolicy,
+  matchesNoDistillSource,
   normalizeTranscript,
   scrubEnabled,
   scrubSecrets,
@@ -162,6 +164,9 @@ async function ingestText(
   distill: boolean,
 ): Promise<IngestSummary> {
   const norm = normalizeTranscript(raw, filename !== undefined ? { filename } : {});
+  // the extraction policy can mark whole sources as never-auto-distilled
+  // (scratch channels, bot feeds); the evidence is still stored.
+  if (distill && matchesNoDistillSource(loadPolicy(), source)) distill = false;
   // the store scrubs identically before the append; counting here lets the
   // receipt say what was caught without the secret ever reaching the output.
   const redactedSecrets = scrubEnabled() ? scrubSecrets(norm.text).total : 0;
