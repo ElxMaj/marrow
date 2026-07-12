@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation wiki
+    url: https://github.com/ElxMaj/marrow/tree/main/docs/wiki
+    about: For how-to and usage questions, read the wiki first instead of opening a bug issue.
+  - name: Report a security vulnerability
+    url: https://github.com/ElxMaj/marrow/security/advisories/new
+    about: Report security issues privately here instead of opening a public bug issue.

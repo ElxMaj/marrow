@@ -6,7 +6,7 @@
 
 Your coding agent has never been in the room. Marrow puts it there.
 
-[Docs](./docs) · [Launch site](https://marrow-six.vercel.app)
+[Docs](./docs/wiki/README.md) · [Launch site](https://marrow-six.vercel.app) · [Contributing](./CONTRIBUTING.md)
 
 </div>
 
