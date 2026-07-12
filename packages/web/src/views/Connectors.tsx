@@ -155,7 +155,15 @@ export function ConnectorsView({ readOnly }: { readOnly: boolean }): JSX.Element
           ))}
         </div>
       ) : connectors.length === 0 ? (
-        <p className="empty">No connectors yet. Add one to start the flow.</p>
+        readOnly ? (
+          <p className="empty">
+            This demo brain was seeded from files, so it runs no live connectors. Self-hosted,
+            connectors like Slack, GitHub, Linear and Notion stream the room in automatically as
+            immutable evidence.
+          </p>
+        ) : (
+          <p className="empty">No connectors yet. Add one to start the flow.</p>
+        )
       ) : (
         <div className="connector-grid">
           {connectors.map((c) => (

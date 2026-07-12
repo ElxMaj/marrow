@@ -52,7 +52,7 @@
     "@marrowhq/shared": "workspace:*"
   },
   "devDependencies": {
-    "@fontsource-variable/fraunces": "5",
+    "@fontsource-variable/archivo": "5",
     "@fontsource-variable/geist": "5",
     "@fontsource-variable/geist-mono": "5",
     "@types/pg": "^8.11.10",

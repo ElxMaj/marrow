@@ -1,29 +1,31 @@
 /* ============================================================
    Marrow design tokens — source of truth.
-   Dark is the default (:root). Light overrides via [data-theme="light"].
-   Warm bone shell + one marrow-gold spark + a serif/sans/mono triad.
-   Depth = 1px warm hairline borders, never shadow or glow.
-   Serif = decided truth, sans = the product, mono = the raw evidence.
+   Dark is the default (:root): the BLACK ROOM, a cold near-black
+   shell with bone ink and one marrow-gold spark. Light overrides
+   via [data-theme="light"] and stays warm bone paper.
+   Depth = 1px hairline borders, never shadow or glow.
+   Archivo = decided truth + titles, sans = the product, mono = the
+   raw evidence. Token spine mirrors landing/app/globals.css.
    ============================================================ */
 :root {
   /* type families (self-hosted variable fonts, imported in main.tsx) */
   --font-display:
-    "Fraunces Variable", ui-serif, Georgia, serif; /* decided titles + masthead only */
+    "Archivo Variable", ui-sans-serif, "Helvetica Neue", Arial, sans-serif; /* decided titles + masthead only */
   --font-sans:
     "Geist Variable", ui-sans-serif, -apple-system, system-ui, sans-serif; /* all UI prose */
   --font-mono:
     "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace; /* ids, spans, confidence */
 
-  /* warm bone neutral ramp (DARK default; hue ~40, low chroma) */
-  --paper: #100f0d; /* page background, warm ink-black */
-  --surface: #1a1815; /* card / panel — lighter than page: the reading-room choice */
-  --surface-2: #221f1b; /* raised: provenance panel, modal */
-  --surface-3: #2a2620; /* hover / selected row */
-  --line: #2c2823; /* hairline divider + default border */
-  --line-strong: #3a352d; /* prominent border, node hover edge */
-  --ink: #ece6d8; /* primary text, warm bone-white (never pure white) */
-  --ink-muted: #9b9384; /* secondary text, labels */
-  --ink-faint: #968d7d; /* tertiary + mono meta — raised so the footer clears AA */
+  /* cold near-black shell (DARK default) — surfaces one step lighter, never warm */
+  --paper: #08090b; /* page background, cold near-black */
+  --surface: #0e1013; /* card / panel — lighter than page: the reading-room choice */
+  --surface-2: #13161a; /* raised: provenance panel, modal */
+  --surface-3: #191d22; /* hover / selected row */
+  --line: #1e2227; /* hairline divider + default border */
+  --line-strong: #2c313a; /* prominent border, node hover edge */
+  --ink: #e8e6e1; /* primary text, bone (never pure white) */
+  --ink-muted: #a3a19a; /* secondary text, labels */
+  --ink-faint: #85837c; /* tertiary + mono meta */
 
   /* the one accent: marrow-gold (single hue ~38, action only — never a status) */
   --gold-300: #e6c98e;
@@ -31,7 +33,7 @@
   --gold-500: #d8a657; /* BRAND: buttons, links, focus ring, selected, span rule */
   --gold-600: #c2913f;
   --gold-700: #9a722f;
-  --gold-border: rgba(216, 166, 87, 0.3);
+  --gold-border: rgba(216, 166, 87, 0.32);
   --gold-wash: rgba(216, 166, 87, 0.12);
   --accent: var(--gold-500);
   --accent-hover: var(--gold-400);
@@ -47,9 +49,9 @@
   --contested: #d98a73; /* warm clay — the ONLY red, conflict only, reads as tension */
   --contested-bg: rgba(217, 138, 115, 0.12);
   --contested-border: rgba(217, 138, 115, 0.36);
-  --superseded: #968d7d; /* warm taupe, archived/quiet — raised to clear AA on its tint */
-  --superseded-bg: rgba(111, 104, 92, 0.14);
-  --superseded-border: rgba(111, 104, 92, 0.3);
+  --superseded: #8b897f; /* taupe, archived/quiet */
+  --superseded-bg: rgba(139, 137, 127, 0.14);
+  --superseded-border: rgba(139, 137, 127, 0.3);
 
   --source-human: var(--decided); /* a human stands behind it */
   --source-model: var(--ink-muted); /* a model proposed it, quieter */
@@ -63,7 +65,8 @@
   --fs-mono: 12px;
   --fs-micro: 11px;
 
-  /* weights — hierarchy from size + warm ink, UI capped at 560 (no 700) */
+  /* weights — hierarchy from size + ink, UI capped at 560 (no 700).
+     display runs 620-660 on Archivo, planted by its width axis. */
   --fw-body: 400;
   --fw-label: 500;
   --fw-title: 540;
@@ -101,8 +104,8 @@
   --stagger: 40ms;
 
   /* depth — shadow reserved for true overlays only */
-  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --scrim: rgba(6, 5, 4, 0.6);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(4, 5, 8, 0.6);
 
   color-scheme: dark;
 }
@@ -225,10 +228,7 @@ body {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   font-weight: var(--fw-display);
-  font-variation-settings:
-    "opsz" 144,
-    "SOFT" 0,
-    "WONK" 0;
+  font-stretch: 118%;
   letter-spacing: -0.02em;
   line-height: 1;
   margin: 0;
@@ -389,11 +389,7 @@ h2 {
   color: var(--ink-muted);
   font-size: var(--fs-body);
   font-family: var(--font-display);
-  font-variation-settings:
-    "opsz" 40,
-    "SOFT" 0,
-    "WONK" 0;
-  font-style: italic;
+  font-stretch: 116%;
   padding: var(--sp-2) 0;
 }
 
@@ -699,15 +695,12 @@ h2 {
   line-height: 1.4;
   color: var(--ink);
 }
-/* serif-for-decided: a decided fact reads as typeset and published; an open or
-   proposed one stays in the sans working voice. promotion is felt as a settling
-   of the type itself, before you read the badge. */
+/* display-for-decided: a decided fact reads as typeset and published; an open
+   or proposed one stays in the sans working voice. promotion is felt as a
+   settling of the type itself, before you read the badge. */
 .node-title.is-decided {
   font-family: var(--font-display);
-  font-variation-settings:
-    "opsz" 40,
-    "SOFT" 0,
-    "WONK" 0;
+  font-stretch: 116%;
   font-weight: var(--fw-display);
   font-size: 17px;
   letter-spacing: -0.01em;
@@ -757,7 +750,7 @@ h2 {
    answered question's card travels across (a WAAPI ghost, see App.tsx), and
    when it lands (.settled) the card runs a single never-repeated spring, a
    gold ring expands and fades, and the title performs the real settle: each
-   word crossfades from the working sans face to the decided serif face,
+   word crossfades from the working sans face to the decided display face,
    word by word. transform + opacity only, promotion is the sacred act. */
 .node.promoting.settled {
   animation: promote 700ms var(--ease-spring);
@@ -795,8 +788,9 @@ h2 {
 }
 
 /* the settling title: dual-face words. both faces share one grid cell so the
-   line never reflows; the sans face is what travels in, the serif face is what
-   the fact becomes. serif-for-decided, performed instead of asserted. */
+   line never reflows; the sans face is what travels in, the display face is
+   what the fact becomes (the .face-serif classname predates Archivo and stays
+   for the settle contract). display-for-decided, performed not asserted. */
 .node-title.settling .word {
   display: inline-grid;
   white-space: pre;
@@ -1018,7 +1012,7 @@ h2 {
 }
 .panel-title.is-decided {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 40;
+  font-stretch: 116%;
   font-weight: var(--fw-display);
   letter-spacing: -0.01em;
 }
@@ -1121,7 +1115,8 @@ h2 {
 
 /* the cited words from the room, set as what they are: raw evidence, in the
    mono voice, under the gold rule, with the exact span carried in a wash of
-   highlighter. mono = evidence; serif stays reserved for decided truth. */
+   highlighter. mono = evidence; the display face stays reserved for decided
+   truth. */
 .span {
   position: relative;
   margin: 0 0 var(--sp-4);
@@ -1185,11 +1180,7 @@ h2 {
   color: var(--ink-muted);
   font-size: var(--fs-body);
   font-family: var(--font-display);
-  font-variation-settings:
-    "opsz" 40,
-    "SOFT" 0,
-    "WONK" 0;
-  font-style: italic;
+  font-stretch: 116%;
 }
 
 /* ----------------------------------------------------------------
@@ -1364,8 +1355,8 @@ h2 {
 /* ================================================================
    CONSOLE — the multi-section shell. The question loop is one
    section among Overview, Graph, Connectors, Observability, Ingest
-   and Settings. Same tokens, same badge/provenance/serif language,
-   one product. Depth stays 1px warm hairlines, gold stays action.
+   and Settings. Same tokens, same badge/provenance/display language,
+   one product. Depth stays 1px hairlines, gold stays action.
    ================================================================ */
 .console {
   display: grid;
@@ -1399,10 +1390,7 @@ h2 {
   font-family: var(--font-display);
   font-size: 24px;
   font-weight: var(--fw-display);
-  font-variation-settings:
-    "opsz" 120,
-    "SOFT" 0,
-    "WONK" 0;
+  font-stretch: 118%;
   letter-spacing: -0.02em;
   margin: 0;
 }
@@ -1571,11 +1559,8 @@ h2 {
 .view-title {
   font-family: var(--font-display);
   font-size: 26px;
-  font-weight: var(--fw-display);
-  font-variation-settings:
-    "opsz" 80,
-    "SOFT" 0,
-    "WONK" 0;
+  font-weight: 640;
+  font-stretch: 116%;
   letter-spacing: -0.015em;
   margin: 0 0 4px;
   color: var(--ink);
@@ -2785,7 +2770,7 @@ h2 {
 
 /* ================================================================
    GOALS — the product team's targets, decided vs open. reuses the
-   node card (gold provenance rule, serif-for-decided, mono footer) so
+   node card (gold provenance rule, display-for-decided, mono footer) so
    a goal reads with the same trust as any fact, split into product
    and user goals with the entity each one serves.
    ================================================================ */

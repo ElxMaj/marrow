@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
 
 // self-hosted variable fonts (OFL, bundled by vite — no Google Fonts hotlink).
-// Fraunces carries the editorial/decided voice (full axis: opsz/SOFT/WONK),
-// Geist is the UI workhorse, Geist Mono is the provenance voice.
-import "@fontsource-variable/fraunces/full.css";
-import "@fontsource-variable/fraunces/full-italic.css";
+// Archivo carries the display/decided voice (wght + wdth, the width axis
+// plants the headlines), Geist is the UI workhorse, Geist Mono is the
+// provenance voice.
+import "@fontsource-variable/archivo/wdth.css";
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 
