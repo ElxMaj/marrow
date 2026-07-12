@@ -735,12 +735,14 @@ describe("synthesize (weekly digest)", () => {
       staleDecided: 1,
       openQuestions: 4,
       undistilled: 5,
+      replaced: 2,
     });
     expect(line).toContain("last 7 days");
     expect(line).toContain("3 facts changed");
     expect(line).toContain("2 contested facts");
     expect(line).toContain("4 open questions");
     expect(line).toContain("5 evidence rows awaiting distillation");
+    expect(line).toContain("2 facts replaced");
   });
 
   it("synthesize reports what changed and what deserves attention, read-only", async () => {
@@ -761,14 +763,44 @@ describe("synthesize (weekly digest)", () => {
       confidence: { value: 0.6, source: "model" },
       provenance: prov,
     });
-    const before = (await core.getDecisions()).length;
-
     // an appended-but-never-distilled row: the digest must admit the backlog.
     await store.insertEvidence({ text: "raw, never distilled", source: "room/raw.md" });
+
+    // a resolved conflict inside the window: the digest must tell the story.
+    const winner = await store.insertDecision({
+      title: "digest: exports poll every 5 seconds",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    const loser = await store.insertDecision({
+      title: "digest: exports poll every minute",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    const conflictQ = await store.insertQuestion({
+      prompt: "digest conflict: which polling cadence holds?",
+      relatesTo: [winner.id, loser.id],
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: prov,
+    });
+    await core.answer(conflictQ.id, "five seconds won after the load test", { decide: winner.id });
+    const before = (await core.getDecisions()).length;
 
     const report = await core.synthesize(7);
     expect(report.windowDays).toBe(7);
     expect(report.undistilled).toBeGreaterThanOrEqual(1);
+    const pair = report.replaced.find((p) => p.winner.id === winner.id);
+    expect(pair).toBeDefined();
+    expect(pair?.loser.id).toBe(loser.id);
+    expect(pair?.at).toBeDefined();
+    expect(pair?.reason).toContain("load test");
     expect(report.newlyDecided.length).toBeGreaterThanOrEqual(1);
     expect(report.contested.length).toBeGreaterThanOrEqual(1);
     expect(report.headline).toContain("last 7 days");

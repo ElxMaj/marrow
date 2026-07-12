@@ -1528,6 +1528,17 @@ export class Store {
     return res.rows.map(edgeFromRow);
   }
 
+  /** Edges of one relation created since a point in time, oldest first,
+   *  bounded. The synthesis digest reads supersedes edges through this to
+   *  tell the replacement story of a window. */
+  async listEdgesSince(relation: Relation, sinceIso: string, limit = 100): Promise<Edge[]> {
+    const res = await this.pool.query<EdgeRow>(
+      `${EDGE_SELECT} where relation = $1 and created_at >= $2 order by created_at asc limit $3`,
+      [relation, sinceIso, limit],
+    );
+    return res.rows.map(edgeFromRow);
+  }
+
   /** A bounded front-door index: every node as id, kind, one-line title, status,
    *  and its degree (how connected it is), the hubs first. Titles only, never
    *  bodies or provenance, so this shows what exists without being the whole
