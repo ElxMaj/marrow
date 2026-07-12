@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -251,9 +251,16 @@ async function main() {
 
     console.log("packed-smoke: installing tarballs in disposable app");
     await writeFile(join(appDir, "package.json"), '{"type":"module","private":true}\n');
-    const tarballs = packages.map((pkg) =>
-      join(packDir, `marrowhq-${pkg === "mcp-server" ? "mcp-server" : pkg}-0.4.0.tgz`),
-    );
+    // Read each package's real version so `pnpm pack` output (marrowhq-<name>-
+    // <version>.tgz) is matched exactly. Hardcoding the version breaks the smoke
+    // test on every release bump.
+    const tarballs = [];
+    for (const pkg of packages) {
+      const manifest = JSON.parse(
+        await readFile(join(root, "packages", pkg, "package.json"), "utf8"),
+      );
+      tarballs.push(join(packDir, `marrowhq-${pkg}-${manifest.version}.tgz`));
+    }
     await run("npm", ["install", "--omit=optional", "--ignore-scripts", ...tarballs], {
       cwd: appDir,
     });
