@@ -308,6 +308,8 @@ export interface SynthReport {
   openQuestions: number;
   driftCatches: number;
   undistilled: number;
+  /** what replaced what in the window, with the date and the answer excerpt. */
+  replaced: { winner: SynthItem; loser: SynthItem; at: string; reason?: string }[];
 }
 
 /** One edge in the console graph, endpoints as bare node ids. */
@@ -2132,6 +2134,27 @@ export class Marrow {
       status: node.status,
     });
     const changed = nodes.filter((node) => inWindow(node.updatedAt)).map(item);
+    // the replacement story: each supersedes edge in the window is a dated
+    // (winner, loser, reason) triple; question endpoints are closed answers,
+    // not replacements, and are skipped.
+    const sinceIso = new Date(sinceMs).toISOString();
+    const replaced: SynthReport["replaced"] = [];
+    for (const edge of await this.store.listEdgesSince("supersedes", sinceIso, 50)) {
+      const winner = await this.store.getNode(edge.fromId);
+      const loser = await this.store.getNode(edge.toId);
+      if (!winner || !loser) continue;
+      if (winner.kind === "question" || loser.kind === "question") continue;
+      let reason: string | undefined;
+      if (edge.evidenceId !== undefined) {
+        reason = (await this.store.getEvidence(edge.evidenceId))?.text.slice(0, 200);
+      }
+      replaced.push({
+        winner: item(winner),
+        loser: item(loser),
+        at: edge.createdAt,
+        ...(reason !== undefined ? { reason } : {}),
+      });
+    }
     const newlyDecided = nodes
       .filter((node) => node.status === "decided" && inWindow(node.updatedAt))
       .map(item);
@@ -2147,6 +2170,7 @@ export class Marrow {
       staleDecided: staleDecided.length,
       openQuestions: questions.length,
       undistilled: backlog.count,
+      replaced: replaced.length,
     };
     return {
       windowDays,
@@ -2158,6 +2182,7 @@ export class Marrow {
       openQuestions: questions.length,
       driftCatches,
       undistilled: backlog.count,
+      replaced,
     };
   }
 

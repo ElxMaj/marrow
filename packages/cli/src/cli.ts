@@ -1200,6 +1200,12 @@ export function formatResult(result: unknown): string {
       newlyDecided: { kind: string; title: string; status: string }[];
       contested: { kind: string; title: string; status: string }[];
       staleDecided: { kind: string; title: string; status: string }[];
+      replaced?: {
+        winner: { title: string };
+        loser: { title: string };
+        at: string;
+        reason?: string;
+      }[];
     };
     const section = (
       label: string,
@@ -1208,9 +1214,21 @@ export function formatResult(result: unknown): string {
       items.length === 0
         ? []
         : ["", label, ...items.map((i) => `  [${colorStatus(i.status)}] ${i.kind}: ${i.title}`)];
+    const replacedLines =
+      rep.replaced && rep.replaced.length > 0
+        ? [
+            "",
+            "Replaced",
+            ...rep.replaced.map(
+              (pair) =>
+                `  "${pair.winner.title}" replaced "${pair.loser.title}" ${relTime(pair.at)}${pair.reason ? dim(`\n    because: "${pair.reason}"`) : ""}`,
+            ),
+          ]
+        : [];
     return [
       `Synthesis, last ${rep.windowDays} day${rep.windowDays === 1 ? "" : "s"}`,
       rep.headline,
+      ...replacedLines,
       ...section("Newly decided", rep.newlyDecided),
       ...section("Contested", rep.contested),
       ...section("Stale, reverify", rep.staleDecided),

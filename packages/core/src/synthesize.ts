@@ -11,6 +11,7 @@ export interface SynthCounts {
   staleDecided: number;
   openQuestions: number;
   undistilled: number;
+  replaced: number;
 }
 
 /** One plain-language line summarizing a synthesis window. */
@@ -24,6 +25,7 @@ export function synthHeadline(c: SynthCounts): string {
     `${plural(c.driftCatches, "drift catch")}, ` +
     `${c.staleDecided} stale, ` +
     `${plural(c.openQuestions, "open question")}, ` +
+    `${plural(c.replaced, "fact")} replaced, ` +
     `${plural(c.undistilled, "evidence row")} awaiting distillation.`
   );
 }
