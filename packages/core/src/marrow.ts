@@ -178,6 +178,9 @@ export interface TraceSpan {
    *  command execution, role impersonation, exfiltration). Advisory, computed
    *  at read time: evidence is never mutated, and a smell never blocks a read. */
   smells?: InstructionSmell[];
+  /** Set only inside task briefs when a long quote was clamped; the full span
+   *  stays byte-exact behind trace_to_source. */
+  truncated?: boolean;
 }
 
 export interface TraceResult {
@@ -948,15 +951,30 @@ export class Marrow {
     };
   }
 
+  /** One node citing a whole document would otherwise inject the whole
+   *  document into every brief that includes it: the maximal injection
+   *  surface and the worst context-noise hit. Briefs clamp; trace_to_source
+   *  stays byte-exact as the lossless path. */
+  private static readonly BRIEF_SPAN_MAX = 600;
+
   private async briefNode(node: Distilled): Promise<BriefNode> {
     const trace = await this.traceToSource(node.id);
+    const clamped = trace.spans.map((span) =>
+      span.spanText.length <= Marrow.BRIEF_SPAN_MAX
+        ? span
+        : {
+            ...span,
+            spanText: `${span.spanText.slice(0, Marrow.BRIEF_SPAN_MAX)} [truncated; run trace_to_source ${node.id} for the full span]`,
+            truncated: true,
+          },
+    );
     return {
       id: node.id,
       kind: node.kind,
       title: nodeTitle(node),
       status: node.status,
       confidence: node.confidence,
-      provenance: trace.spans,
+      provenance: clamped,
       ...(node.verifiedAt !== undefined ? { verifiedAt: node.verifiedAt } : {}),
       ...(isFactStale(node) ? { stale: true } : {}),
       ...(node.kind === "goal" ? { goalType: node.goalType } : {}),
