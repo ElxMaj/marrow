@@ -421,6 +421,32 @@ describe("agent decision gate and truth maintenance", () => {
     expect(brief.askHumanFirst.questions.length).toBeLessThanOrEqual(6);
   });
 
+  it("briefs clamp giant quoted spans; trace_to_source stays byte-exact", async () => {
+    const wall = `Dana: the decision stands. ${"filler sentence to bloat the span. ".repeat(40)}end`;
+    const ev = await store.insertEvidence({ text: wall, source: "interviews/wall.md" });
+    const dec = await store.insertDecision({
+      title: "Wall-of-text decision",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: ev.id, start: 0, end: wall.length }],
+    });
+
+    const brief = await core.prepareTask("wall of text decision stands");
+    const fact = brief.safeToBuild.facts.find((f) => f.id === dec.id);
+    if (!fact) throw new Error("expected the decision in the brief");
+    const span = fact.provenance[0];
+    expect(span?.truncated).toBe(true);
+    expect(span?.spanText.length).toBeLessThan(700);
+    expect(span?.spanText).toContain(`trace_to_source ${dec.id}`);
+
+    // the lossless path is untouched: audits read the full bytes.
+    const trace = await core.traceToSource(dec.id);
+    expect(trace.spans[0]?.spanText).toBe(wall);
+    expect(trace.spans[0]?.truncated).toBeUndefined();
+  });
+
   it("prepareTask check mode runs drift, creates catch events, receipts and next commands", async () => {
     await seedPasswordTruth();
     const brief = await core.prepareTask("implement password login", {
