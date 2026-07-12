@@ -7,6 +7,22 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # the same DB-backed suite as ci.yml runs here before publish, so it needs
+    # the same pgvector Postgres service. without it, migrate and every
+    # database test fail and the release never reaches changeset publish.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marrow
+          POSTGRES_PASSWORD: marrow
+          POSTGRES_DB: marrow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marrow"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -20,6 +36,7 @@ jobs:
         run: test -n "$NODE_AUTH_TOKEN"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: pnpm db:migrate
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
