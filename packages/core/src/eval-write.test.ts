@@ -76,9 +76,9 @@ describe("write-quality eval (the Mem0 lesson, gated)", () => {
     expect(report.writeRecall).toBeLessThanOrEqual(1);
     // entities merge at write time; their restatement never duplicates.
     expect(report.entityDuplicateRate).toBe(0);
-    // decisions and goals have no write-time near-duplicate guard until R17:
-    // the rate is reported honestly, and this pin flips when R17 lands.
-    expect(report.duplicateRate).toBeGreaterThan(0);
+    // R17's write-time guard: restating the same room merges decisions and
+    // goals into their canonical nodes instead of doubling the brain.
+    expect(report.duplicateRate).toBe(0);
     // synchronous distillation: written facts are retrievable when the call
     // returns, and the measured window stays sane.
     expect(report.ingestionReadyP95Ms).toBeGreaterThan(0);

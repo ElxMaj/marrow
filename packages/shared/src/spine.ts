@@ -183,6 +183,7 @@ export const RelationSchema = z.enum([
   "refines",
   "conflicts_with",
   "relates_to",
+  "duplicates",
 ]);
 export type Relation = z.infer<typeof RelationSchema>;
 
