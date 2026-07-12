@@ -13,6 +13,7 @@ import {
   runBenchmark,
   seedBenchmarkBrain,
 } from "./benchmark.js";
+import { withScratchSchema } from "./scratch.js";
 import { createConceptEmbedding } from "./demo.js";
 import { Marrow } from "./marrow.js";
 import { Store } from "./store.js";
@@ -143,12 +144,24 @@ describe("benchmark", () => {
       relevantTitles: [spec.entity, spec.decisionTitle],
     }));
 
-    await seedBenchmarkBrain(core, corpus, { decide: true });
-    const report = await runBenchmark(core, {
-      corpusTexts: corpus.map((d) => d.text),
-      labeled,
-      k: 4,
-      measureBrief: true,
+    // a scratch schema, exactly like the canonical scorecard: the shared test
+    // database carries append-only evidence from earlier tests, which the
+    // session buffer would honestly (but irrelevantly) drag into the measured
+    // briefs. Pristine state is part of what these numbers mean.
+    const report = await withScratchSchema(DATABASE_URL, async (scratchUrl) => {
+      const scratchStore = new Store(scratchUrl);
+      const scratchCore = new Marrow(scratchStore, undefined, createConceptEmbedding());
+      try {
+        await seedBenchmarkBrain(scratchCore, corpus, { decide: true });
+        return await runBenchmark(scratchCore, {
+          corpusTexts: corpus.map((d) => d.text),
+          labeled,
+          k: 4,
+          measureBrief: true,
+        });
+      } finally {
+        await scratchStore.close();
+      }
     });
 
     // the slice must be RIGHT, not just small: every labeled node surfaces.
