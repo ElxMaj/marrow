@@ -85,6 +85,21 @@ export async function runScorecard(scratchUrl: string): Promise<Scorecard> {
     );
   };
   try {
+    // retrieval benchmark FIRST, on a pristine scratch: evidence is append
+    // only even here, so any arm that ran earlier would leave undistilled
+    // rows behind and the session buffer would honestly (but irrelevantly)
+    // drag them into the measured briefs. Order is the isolation.
+    await reset();
+    const benchCore = new Marrow(store, undefined, createConceptEmbedding());
+    const { docs, labeled } = loadBenchmarkGolden();
+    await seedBenchmarkBrain(benchCore, docs, { decide: true });
+    const benchmark = await runBenchmark(benchCore, {
+      corpusTexts: docs.map((d) => d.text),
+      labeled,
+      k: 4,
+      measureBrief: true,
+    });
+
     // drift-catch eval: rule-based, keyless.
     await reset();
     const catchCore = new Marrow(store);
@@ -100,18 +115,6 @@ export async function runScorecard(scratchUrl: string): Promise<Scorecard> {
     await reset();
     const temporalCore = new Marrow(store, undefined, createConceptEmbedding());
     const temporalReport = await runTemporalEval(temporalCore, loadTemporalGolden(), reset);
-
-    // retrieval benchmark: the labeled corpus, decided through the loop.
-    await reset();
-    const benchCore = new Marrow(store, undefined, createConceptEmbedding());
-    const { docs, labeled } = loadBenchmarkGolden();
-    await seedBenchmarkBrain(benchCore, docs, { decide: true });
-    const benchmark = await runBenchmark(benchCore, {
-      corpusTexts: docs.map((d) => d.text),
-      labeled,
-      k: 4,
-      measureBrief: true,
-    });
 
     return {
       benchmark,

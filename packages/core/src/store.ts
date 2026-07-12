@@ -1055,6 +1055,42 @@ export class Store {
     }));
   }
 
+  /** The session buffer's source: undistilled evidence that either matches
+   *  one of the task's terms or landed in the last 24 hours (you just said
+   *  it), newest first, bounded. Same anti-join predicate as
+   *  undistilledEvidence. */
+  async searchUndistilledEvidence(terms: string[], limit = 3): Promise<Evidence[]> {
+    const patterns = terms
+      .filter((term) => term.length >= 4)
+      .slice(0, 8)
+      .map((term) => `%${escapeLike(term)}%`);
+    const res = await this.pool.query<{
+      id: string;
+      text: string;
+      source: string;
+      created_at: Date;
+    }>(
+      `select id, text, source, created_at from evidence e
+        where not exists (select 1 from provenance p where p.evidence_id = e.id)
+          and not exists (
+            select 1 from run r
+             where r.kind = 'distill' and r.status = 'ok'
+               and r.metadata->>'evidenceId' = e.id)
+          and (created_at >= now() - interval '24 hours'
+               or ($1::text[] <> '{}' and text ilike any($1::text[])))
+        order by created_at desc
+        limit $2`,
+      [patterns, limit],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      kind: "evidence" as const,
+      text: row.text,
+      source: row.source,
+      createdAt: iso(row.created_at),
+    }));
+  }
+
   /** How deep the backlog is and how old its oldest row is, for the truth and
    *  synthesize surfaces. Same predicate as undistilledEvidence. */
   async countUndistilledEvidence(): Promise<{ count: number; oldestCreatedAt?: string }> {
