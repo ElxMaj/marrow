@@ -237,6 +237,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   distill --pending [--limit N]   Drain the undistilled backlog, newest first (default 50)
   answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
   retract <nodeId> --reason "..." [--force]   Human-only: a false memory stops surfacing (kept, never erased)
+  history <nodeId>            The replacement lineage: what replaced what, when, and why
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
   goal propose "<title>" --type product|user --evidence <id> [--start N --end N]
@@ -562,6 +563,12 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       await core.distill(evidenceId);
       await core.linkAndMerge(evidenceId);
       return { evidenceId, nodes: await core.getNodesForEvidence(evidenceId) };
+    }
+
+    case "history": {
+      const nodeId = positional(rest);
+      if (!nodeId) throw new Error("Usage: marrow history <nodeId>");
+      return core.getHistory(nodeId);
     }
 
     case "retract": {
@@ -1062,6 +1069,30 @@ export function formatResult(result: unknown): string {
       ...superseded.map((n) => `Superseded: ${nodeTitle(n)} (${n.id})`),
       "Answer recorded as evidence, question closed.",
     ].join("\n");
+  }
+
+  // history: the replacement lineage, oldest first.
+  if ("entries" in r && "nodeId" in r && Array.isArray(r.entries)) {
+    const brief = r as {
+      nodeId: string;
+      entries: {
+        id: string;
+        kind: string;
+        title: string;
+        status: string;
+        supersededAt?: string;
+        reason?: string;
+        current?: boolean;
+      }[];
+    };
+    if (brief.entries.length === 0) return "(No lineage: this node has no supersedes history.)";
+    const lines = brief.entries.map((entry) => {
+      const head = entry.current ? " · CURRENT" : "";
+      const when = entry.supersededAt ? dim(` · replaced ${relTime(entry.supersededAt)}`) : "";
+      const why = entry.reason ? dim(`\n      because: "${entry.reason}"`) : "";
+      return `  [${colorStatus(entry.status)}] ${entry.kind}: ${entry.title}${head}${when}${why}`;
+    });
+    return [`Lineage for ${brief.nodeId} (oldest first)`, ...lines].join("\n");
   }
 
   // neighbors: a node and the graph neighborhood around it.

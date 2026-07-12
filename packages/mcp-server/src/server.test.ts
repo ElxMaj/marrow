@@ -114,6 +114,7 @@ describe("mcp server (over the SDK transport)", () => {
       "trace_to_source",
       "get_neighbors",
       "get_index",
+      "get_history",
       "prepare_task",
       "append_evidence",
       "propose_node",

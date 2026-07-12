@@ -348,6 +348,26 @@ export interface TaskBrief {
   };
 }
 
+/** One step in a fact's replacement lineage, oldest first. */
+export interface HistoryEntry {
+  id: string;
+  kind: Distilled["kind"];
+  title: string;
+  status: Status;
+  verifiedAt?: string;
+  /** when this entry was replaced (the supersedes edge date), absent on the head. */
+  supersededAt?: string;
+  /** the answer text that justified replacing this entry, when recorded. */
+  reason?: string;
+  /** true on the chain's current head. */
+  current?: boolean;
+}
+
+export interface HistoryBrief {
+  nodeId: string;
+  entries: HistoryEntry[];
+}
+
 export interface TruthMaintenanceBrief {
   sourceOfTruth: { decidedGoals: BriefNode[]; decidedDecisions: BriefNode[] };
   openProposedGoals: BriefNode[];
@@ -945,6 +965,59 @@ export class Marrow {
    * carries the relation and hop distance. Bounded (never the whole brain) and
    * read only: walking edges changes no status.
    */
+  /**
+   * A fact's replacement lineage: walk the supersedes edges through this node
+   * and lay the chain out oldest first, each entry with its dates and the
+   * answer text that justified the replacement. Question endpoints are
+   * filtered out (an answered question also carries status superseded, which
+   * means closed, not replaced). Read-only, bounded, and the stored history
+   * is what makes invalidation-not-erasure visible.
+   */
+  async getHistory(nodeId: string): Promise<HistoryBrief> {
+    const steps = await this.store.supersedesChain(nodeId);
+    // collect the distinct decision/goal endpoints with their step metadata.
+    const supersededAt = new Map<string, { at: string; evidenceId?: string }>();
+    const ids = new Set<string>([nodeId]);
+    for (const step of steps) {
+      ids.add(step.fromId);
+      ids.add(step.toId);
+      // winner -> loser: the loser (to_id) was replaced at the edge's date.
+      supersededAt.set(step.toId, {
+        at: step.createdAt,
+        ...(step.evidenceId !== undefined ? { evidenceId: step.evidenceId } : {}),
+      });
+    }
+    const entries: HistoryEntry[] = [];
+    for (const id of ids) {
+      const node = await this.store.getNode(id);
+      if (!node || node.kind === "question") continue;
+      const replaced = supersededAt.get(id);
+      let reason: string | undefined;
+      if (replaced?.evidenceId !== undefined) {
+        const evidence = await this.store.getEvidence(replaced.evidenceId);
+        reason = evidence?.text.slice(0, 240);
+      }
+      entries.push({
+        id: node.id,
+        kind: node.kind,
+        title: nodeTitle(node),
+        status: node.status,
+        ...(node.verifiedAt !== undefined ? { verifiedAt: node.verifiedAt } : {}),
+        ...(replaced !== undefined ? { supersededAt: replaced.at } : {}),
+        ...(reason !== undefined ? { reason } : {}),
+        ...(replaced === undefined && node.status === "decided" ? { current: true } : {}),
+      });
+    }
+    // oldest first: replaced entries by their replacement date, the head last.
+    entries.sort((a, b) => {
+      if (a.supersededAt && b.supersededAt) return a.supersededAt.localeCompare(b.supersededAt);
+      if (a.supersededAt) return -1;
+      if (b.supersededAt) return 1;
+      return a.id.localeCompare(b.id);
+    });
+    return { nodeId, entries };
+  }
+
   async getNeighbors(nodeId: string, maxHops = 1): Promise<NeighborsBrief> {
     const node = await this.store.getNode(nodeId);
     if (!node) return { node: undefined, neighbors: [] };
