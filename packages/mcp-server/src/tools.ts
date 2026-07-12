@@ -192,18 +192,51 @@ export function createTools(core: Marrow): ToolDef[] {
     {
       name: "append_evidence",
       description:
-        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Credential-shaped spans (API keys, tokens, private keys) are replaced with [redacted:kind] placeholders before storage, because evidence cannot be deleted afterward. Distillation happens separately.",
+        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Credential-shaped spans (API keys, tokens, private keys) are replaced with [redacted:kind] placeholders before storage, because evidence cannot be deleted afterward. Distills inline by default when a model is configured, so what you append is retrievable in this same session; distillation only proposes OPEN nodes, never decided ones. Pass distill: false to defer (faster; drain later with marrow distill --pending).",
       inputSchema: {
         type: "object",
-        properties: { text: { type: "string" }, source: { type: "string" } },
+        properties: {
+          text: { type: "string" },
+          source: { type: "string" },
+          distill: {
+            type: "boolean",
+            description:
+              "distill inline so the write is retrievable now (default true when a model is configured)",
+          },
+        },
         required: ["text", "source"],
       },
       handler: async (args) => {
-        const { text, source } = z.object({ text: z.string(), source: z.string() }).parse(args);
+        const { text, source, distill } = z
+          .object({ text: z.string(), source: z.string(), distill: z.boolean().optional() })
+          .parse(args);
         const redactedSecrets = scrubEnabled() ? scrubSecrets(text).total : 0;
+        const redacted = redactedSecrets > 0 ? { redactedSecrets } : {};
+        // inline distillation closes the read-after-write window: the agent's
+        // own mid-session write becomes searchable before this call returns.
+        // It still cannot decide anything: distill proposes open nodes only.
+        if ((distill ?? true) && core.canDistill) {
+          const { evidenceId, nodes } = await core.ingestAndDistill({ text, source });
+          return {
+            evidenceId,
+            distilled: true,
+            nodes: nodes.map((n) => ({
+              id: n.id,
+              kind: n.kind,
+              status: n.status,
+            })),
+            ...redacted,
+          };
+        }
+        const evidenceId = await core.ingest({ text, source });
         return {
-          evidenceId: await core.ingest({ text, source }),
-          ...(redactedSecrets > 0 ? { redactedSecrets } : {}),
+          evidenceId,
+          distilled: false,
+          next:
+            "not yet searchable: distillation is deferred. Drain with `marrow distill --pending` (or `marrow distill " +
+            evidenceId +
+            "`).",
+          ...redacted,
         };
       },
     },

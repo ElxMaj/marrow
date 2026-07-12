@@ -454,6 +454,32 @@ describe("mcp tools", () => {
     expect(tools.every((t) => !/retract/i.test(t.description))).toBe(true);
   });
 
+  it("append_evidence distills inline by default: the write is retrievable in-session", async () => {
+    const result = (await call("append_evidence", {
+      text: transcript,
+      source: "sessions/inline.md",
+    })) as { evidenceId: string; distilled: boolean; nodes: { status: string }[] };
+    expect(result.distilled).toBe(true);
+    expect(result.nodes.length).toBeGreaterThanOrEqual(1);
+    // every distilled node is OPEN: the tool still cannot decide anything.
+    expect(result.nodes.every((n) => n.status === "open")).toBe(true);
+    // read-after-write: the same session finds what it just wrote.
+    const hits = (await call("search", { query: "magic link auth" })) as {
+      results: { id: string }[];
+    };
+    expect(hits.results.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("append_evidence with distill false defers and names the drain command", async () => {
+    const result = (await call("append_evidence", {
+      text: "deferred note for later distillation",
+      source: "sessions/deferred.md",
+      distill: false,
+    })) as { evidenceId: string; distilled: boolean; next?: string };
+    expect(result.distilled).toBe(false);
+    expect(result.next).toContain("marrow distill --pending");
+  });
+
   it("append_evidence redacts credential-shaped spans before storage and reports it", async () => {
     const result = (await call("append_evidence", {
       text: "deploy note: export MARROW token sk-proj-abc123DEF456ghi789 rotated today",
