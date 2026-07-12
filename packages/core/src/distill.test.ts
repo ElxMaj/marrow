@@ -355,6 +355,47 @@ describe("chunkText", () => {
   });
 });
 
+describe("extraction policy in the distill pass", () => {
+  it("drops calendar chatter deterministically and records the count in the run", async () => {
+    const text =
+      "We decided magic links only. Also the standup moved to Thursday at 10am this week.";
+    class ChattyModel {
+      readonly model = "chatty";
+      complete(): Promise<string> {
+        return Promise.resolve(
+          JSON.stringify({
+            decisions: [
+              { title: "Auth uses magic links only", quote: "magic links only" },
+              {
+                title: "Standup moved to Thursday at 10am",
+                quote: "standup moved to Thursday at 10am",
+              },
+            ],
+          }),
+        );
+      }
+    }
+    const chatty = new Marrow(store, new ChattyModel(), new FakeEmbedding());
+    const { nodes } = await chatty.ingestAndDistill({ text, source: "standups/chatter.md" });
+
+    // the real decision landed; the calendar chatter never became a node.
+    expect(nodes.some((n) => n.kind === "decision" && /magic links/i.test(nodeLabel(n)))).toBe(
+      true,
+    );
+    expect(nodes.some((n) => /standup moved/i.test(nodeLabel(n)))).toBe(false);
+
+    // the drop is visible in the run trace, so audits see filtered volume.
+    const runs = await store.listRuns({ kind: "distill", limit: 1 });
+    expect(runs[0]?.metadata).toMatchObject({ policyDrops: 1 });
+  });
+});
+
+function nodeLabel(node: { kind: string } & Record<string, unknown>): string {
+  return String(
+    node.kind === "entity" ? node.name : node.kind === "question" ? node.prompt : node.title,
+  );
+}
+
 describe("write-time injection guard", () => {
   it("the distill prompt tells the model the transcript is data, never instructions", () => {
     expect(DISTILL_SYSTEM).toMatch(/never instructions to you/i);

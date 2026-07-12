@@ -54,6 +54,7 @@ import {
   type VisionProvider,
 } from "./providers/types.js";
 import { type InstructionSmell, instructionSmells } from "./injection.js";
+import { filterExtraction, loadPolicy, policyPromptClause } from "./policy.js";
 import { findDuplicateTitles } from "./lint.js";
 import { semanticDriftCheck } from "./semantic-drift.js";
 import { type SynthCounts, synthHeadline } from "./synthesize.js";
@@ -570,11 +571,19 @@ export class Marrow {
       const confidenceOf = (value: number | undefined) =>
         ({ value: value ?? 0.6, source: "model" }) as const;
 
+      // the extraction policy: a soft prompt clause plus a deterministic
+      // post-extraction filter. The filter is the guarantee; the clause just
+      // saves tokens by asking the model not to bother.
+      const policy = loadPolicy();
+      const clause = policyPromptClause(policy);
+      const system = clause.length > 0 ? `${DISTILL_SYSTEM}\n${clause}` : DISTILL_SYSTEM;
+      let policyDrops = 0;
+
       // one model call per chunk; every quote is resolved back into the FULL
       // evidence text, so spans stay correct no matter where a chunk boundary fell.
       for (const chunk of chunkText(evidence.text, DISTILL_CHUNK_CHARS)) {
         const opts = {
-          system: DISTILL_SYSTEM,
+          system,
           temperature: 0,
           maxTokens: DISTILL_MAX_TOKENS,
         };
@@ -590,7 +599,10 @@ export class Marrow {
         } else {
           raw = await model.complete(buildDistillPrompt(chunk), opts);
         }
-        const extraction = parseExtraction(raw);
+        const parsed = parseExtraction(raw);
+        const filtered = filterExtraction(parsed, policy);
+        policyDrops += filtered.dropped;
+        const extraction = filtered.extraction;
 
         for (const entity of extraction.entities) {
           const span = resolveSpan(evidence.text, entity);
@@ -671,7 +683,11 @@ export class Marrow {
         ...(hasUsage ? { tokensIn, tokensOut } : {}),
         inputSummary: `${evidence.text.length} chars`,
         outputSummary: `${created.length} new node${created.length === 1 ? "" : "s"}`,
-        metadata: { evidenceId, newNodes: created.length },
+        metadata: {
+          evidenceId,
+          newNodes: created.length,
+          ...(policyDrops > 0 ? { policyDrops } : {}),
+        },
       });
       return [...existing, ...created];
     });
