@@ -670,6 +670,14 @@ export class Marrow {
       }
     }
 
+    // 1.5 decision/goal near-duplicate guard: the same room restated in new
+    //     evidence must not double the brain. Exact open-open title matches
+    //     merge into the pre-existing node; everything else is advisory.
+    for (const node of await this.store.getNodesForEvidence(evidenceId)) {
+      if (node.kind !== "decision" && node.kind !== "goal") continue;
+      await this.dedupeAgainstExisting(node);
+    }
+
     // 2. conflict detection: a new decision against the rest of the decision
     //    graph, not just the decided part. a conflict with a DECIDED decision
     //    contests the new one; a conflict between two not-yet-decided decisions
@@ -2009,6 +2017,88 @@ export class Marrow {
   }
 
   /**
+   * The write-time near-duplicate guard for decisions and goals. Exact
+   * normalized-title matches where BOTH nodes are open merge provenance into
+   * the pre-existing node (the shipped entity precedent; the survivor is
+   * always the node that was there first, and the just-created duplicate is
+   * deleted through the re-pointing helper so no edge or verification ever
+   * strands). Any pair involving settled or contested truth, and every
+   * paraphrase-level match, gets an advisory duplicates edge plus one deduped
+   * question instead: a human resolves it, nothing merges silently, and no
+   * status ever changes. Returns the canonical node when the new node was
+   * merged away.
+   */
+  private async dedupeAgainstExisting(node: Decision | Goal): Promise<Distilled | undefined> {
+    const peers =
+      node.kind === "decision" ? await this.store.listDecisions() : await this.store.listGoals();
+    const normalized = normalizeTitle(node.title);
+    const canonical = peers.find(
+      (peer) => peer.id !== node.id && normalizeTitle(peer.title) === normalized,
+    );
+    if (canonical) {
+      if (canonical.status === "open" && node.status === "open") {
+        await this.store.addProvenance(canonical.id, canonical.kind, node.provenance);
+        if (node.kind === "decision") await this.store.deleteDecision(node.id, canonical.id);
+        else await this.store.deleteGoal(node.id, canonical.id);
+        return this.store.getNode(canonical.id);
+      }
+      await this.flagDuplicate(node, canonical);
+      return undefined;
+    }
+    // paraphrase pass: embedding distance under the threshold. A node without
+    // an embedding row (keyless mode) simply gets no candidates; the
+    // exact-title pass above still covers that path.
+    const threshold = Number(process.env.MARROW_DUP_DISTANCE) || 0.15;
+    for (const near of await this.store.nearestNodesWithDistance(node.id, node.kind, 5)) {
+      // zero or degenerate vectors yield a non-finite cosine distance: no
+      // paraphrase signal, not a match-everything signal.
+      if (!Number.isFinite(near.distance) || near.distance > threshold) break;
+      const other = await this.store.getNode(near.id);
+      if (!other || other.kind !== node.kind) continue;
+      if (
+        other.status === "retracted" ||
+        other.status === "superseded" ||
+        other.status === "dismissed"
+      ) {
+        continue;
+      }
+      // a contradiction is not a restatement: conflicting pairs belong to the
+      // conflict path, which raises the sharper "which one holds?" question.
+      const conflicts =
+        node.kind === "decision" && other.kind === "decision"
+          ? decisionsConflict(node, other) !== undefined
+          : node.kind === "goal" && other.kind === "goal"
+            ? goalsConflict(node, other) !== undefined
+            : false;
+      if (conflicts) continue;
+      await this.flagDuplicate(node, other);
+      break; // one advisory flag per new node is enough for a human to act
+    }
+    return undefined;
+  }
+
+  private async flagDuplicate(node: Distilled, canonical: Distilled): Promise<void> {
+    await this.store.insertEdge({
+      fromId: node.id,
+      fromKind: node.kind,
+      toId: canonical.id,
+      toKind: canonical.kind,
+      relation: "duplicates",
+      confidence: 0.7,
+      source: "rule",
+    });
+    if (!(await this.store.hasQuestionRelating(node.id, canonical.id))) {
+      await this.store.insertQuestion({
+        prompt: `duplicate: is "${nodeTitle(node)}" the same as "${nodeTitle(canonical)}"? if yes, keep one through the answer loop.`,
+        relatesTo: [node.id, canonical.id],
+        status: "open",
+        confidence: { value: 0.6, source: "model" },
+        provenance: node.provenance,
+      });
+    }
+  }
+
+  /**
    * The human-only correction: retract a false memory so it stops surfacing
    * anywhere retrieval serves facts, while the node, its content, and its
    * provenance stay fully inspectable by id. The reason is stored as
@@ -2073,7 +2163,10 @@ export class Marrow {
         provenance: input.provenance,
       });
       await this.embedNode(node.id, "decision", `${input.title} ${input.rationale ?? ""}`);
-      return node;
+      // the noisiest writer gets the same guard as distillation: a restated
+      // proposal merges into (and returns) the pre-existing node.
+      const canonical = await this.dedupeAgainstExisting(node);
+      return canonical ?? node;
     }
     if (input.kind === "goal") {
       const node = await this.store.insertGoal({
@@ -2086,7 +2179,8 @@ export class Marrow {
         provenance: input.provenance,
       });
       await this.embedNode(node.id, "goal", `${input.title} ${input.description ?? ""}`);
-      return node;
+      const canonical = await this.dedupeAgainstExisting(node);
+      return canonical ?? node;
     }
     const node = await this.store.insertQuestion({
       prompt: input.prompt,

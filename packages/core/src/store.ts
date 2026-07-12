@@ -1073,22 +1073,44 @@ export class Store {
     };
   }
 
-  /** Remove a duplicate distilled entity after its provenance has been merged
+  /** Remove a duplicate distilled node after its provenance has been merged
    *  into the canonical node. distilled nodes are mergeable; evidence is not.
    *  With a canonicalId, the duplicate's edges and verifications are re-pointed
    *  to the canonical node first (deduped against edge_unique, self-loops
    *  dropped), so a merge never erodes the connectivity walked retrieval
    *  depends on. Without one, they are removed, so nothing dangles. */
   async deleteEntity(entityId: string, canonicalId?: string): Promise<void> {
+    await this.deleteDistilled("entity", entityId, canonicalId);
+  }
+
+  /** deleteEntity's shape for a duplicate decision: same re-pointing, same
+   *  guarantees. Only the write-time merge calls this. */
+  async deleteDecision(decisionId: string, canonicalId?: string): Promise<void> {
+    await this.deleteDistilled("decision", decisionId, canonicalId);
+  }
+
+  /** deleteEntity's shape for a duplicate goal. */
+  async deleteGoal(goalId: string, canonicalId?: string): Promise<void> {
+    await this.deleteDistilled("goal", goalId, canonicalId);
+  }
+
+  private async deleteDistilled(
+    kind: EdgeNodeKind,
+    nodeId: string,
+    canonicalId?: string,
+  ): Promise<void> {
+    const table = tableForKind(kind);
     await this.tx(async (client) => {
-      await this.reassignAdvisoryRows(client, entityId, "entity", canonicalId);
-      await client.query("delete from embedding where node_id = $1 and node_kind = 'entity'", [
-        entityId,
+      await this.reassignAdvisoryRows(client, nodeId, kind, canonicalId);
+      await client.query(`delete from embedding where node_id = $1 and node_kind = $2`, [
+        nodeId,
+        kind,
       ]);
-      await client.query("delete from provenance where node_id = $1 and node_kind = 'entity'", [
-        entityId,
+      await client.query(`delete from provenance where node_id = $1 and node_kind = $2`, [
+        nodeId,
+        kind,
       ]);
-      await client.query("delete from entity where id = $1", [entityId]);
+      await client.query(`delete from ${table} where id = $1`, [nodeId]);
     });
   }
 
@@ -1272,6 +1294,27 @@ export class Store {
       if (node && node.status !== "retracted") out.push(node);
     }
     return out;
+  }
+
+  /** The k nearest same-kind nodes to a given node's stored embedding, with
+   *  cosine distance. The write-time near-duplicate guard uses this to spot a
+   *  restatement; a node without an embedding row (keyless mode) returns
+   *  nothing, and exact-title matching still covers that path. */
+  async nearestNodesWithDistance(
+    nodeId: string,
+    kind: DistilledKind,
+    k = 5,
+  ): Promise<{ id: string; distance: number }[]> {
+    const res = await this.pool.query<{ node_id: string; distance: number }>(
+      `select e2.node_id, (e2.vector <=> e1.vector) as distance
+         from embedding e1
+         join embedding e2 on e2.node_kind = $2 and e2.node_id <> e1.node_id
+        where e1.node_id = $1
+        order by e2.vector <=> e1.vector
+        limit $3`,
+      [nodeId, kind, k],
+    );
+    return res.rows.map((row) => ({ id: row.node_id, distance: Number(row.distance) }));
   }
 
   /** All distilled nodes that cite a given evidence row. distillation uses this
