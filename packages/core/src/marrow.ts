@@ -403,6 +403,7 @@ const STATUS_WEIGHT: Record<string, number> = {
   contested: 1,
   superseded: 2,
   dismissed: 2,
+  retracted: 3,
 };
 
 function currentStateFirst<T extends { status: string }>(results: T[]): T[] {
@@ -935,6 +936,8 @@ export class Marrow {
     for (const nb of reached) {
       const n = await this.store.getNode(nb.id);
       if (!n) continue;
+      // retracted nodes stay inspectable by id, never served by the walk.
+      if (n.status === "retracted") continue;
       const link = directed.get(nb.id);
       neighbors.push({
         id: n.id,
@@ -2003,6 +2006,48 @@ export class Marrow {
   /** Backlog depth plus the age of its oldest row. */
   async countUndistilledEvidence(): Promise<{ count: number; oldestCreatedAt?: string }> {
     return this.store.countUndistilledEvidence();
+  }
+
+  /**
+   * The human-only correction: retract a false memory so it stops surfacing
+   * anywhere retrieval serves facts, while the node, its content, and its
+   * provenance stay fully inspectable by id. The reason is stored as
+   * append-only evidence and linked as the retraction's provenance. There is
+   * deliberately NO MCP tool for this: agents cannot retract, which is the
+   * promote gate's mirror. A decided fact is refused without force: settled
+   * truth should normally be replaced through the answer loop, not deleted
+   * from view.
+   */
+  async retract(
+    nodeId: string,
+    reason: string,
+    opts: { force?: boolean } = {},
+  ): Promise<Distilled> {
+    if (!reason || reason.trim().length === 0) {
+      throw new Error("retract: a reason is required");
+    }
+    const node = await this.store.getNode(nodeId);
+    if (!node) throw new Error(`retract: node ${nodeId} not found`);
+    if (node.status === "retracted") {
+      throw new Error(`retract: node ${nodeId} is already retracted`);
+    }
+    if (node.status === "decided" && !opts.force) {
+      throw new Error(
+        `retract: ${nodeId} is decided. Settled truth is normally replaced through the answer loop (a conflict question plus answer --decide); pass --force to retract it anyway.`,
+      );
+    }
+    const evidence = await this.store.insertEvidence({
+      text: reason,
+      source: `retractions/${nodeId}`,
+    });
+    await this.store.retract(nodeId, node.kind, {
+      evidenceId: evidence.id,
+      start: 0,
+      end: reason.length,
+    });
+    const updated = await this.store.getNode(nodeId);
+    if (!updated) throw new Error(`retract: node ${nodeId} vanished`);
+    return updated;
   }
 
   async proposeNode(input: ProposeInput): Promise<Distilled> {

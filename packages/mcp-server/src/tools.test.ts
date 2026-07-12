@@ -448,6 +448,12 @@ describe("mcp tools", () => {
     expect((await core.getNode(catchQuestion.id))?.status).toBe("open");
   });
 
+  it("there is deliberately no MCP retract tool: agents cannot hide facts", () => {
+    expect(tools.map((t) => t.name)).not.toContain("retract");
+    // and no tool description even hints at a retract path.
+    expect(tools.every((t) => !/retract/i.test(t.description))).toBe(true);
+  });
+
   it("append_evidence redacts credential-shaped spans before storage and reports it", async () => {
     const result = (await call("append_evidence", {
       text: "deploy note: export MARROW token sk-proj-abc123DEF456ghi789 rotated today",

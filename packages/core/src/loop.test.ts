@@ -577,6 +577,52 @@ describe("agent decision gate and truth maintenance", () => {
     );
   });
 
+  it("retract requires a reason, refuses decided without force, and hides the node from every read surface", async () => {
+    const { decision } = await seedPasswordTruth();
+    // a hallucinated open proposal alongside the decided truth.
+    const ev = await store.insertEvidence({
+      text: "we said kafka once, maybe",
+      source: "room/k.md",
+    });
+    const junk = await store.insertDecision({
+      title: "All messaging moves to Kafka",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 11 }],
+    });
+
+    await expect(core.retract(junk.id, "  ")).rejects.toThrow(/reason is required/);
+    await expect(core.retract(decision.id, "changed my mind")).rejects.toThrow(/--force/);
+
+    const retracted = await core.retract(junk.id, "the room never committed to kafka");
+    expect(retracted.status).toBe("retracted");
+
+    // gone from search and briefs; the neighbor walk skips it too.
+    expect((await core.search("kafka messaging", 8)).map((n) => n.id)).not.toContain(junk.id);
+    const brief = await core.prepareTask("kafka messaging plans");
+    const briefIds = [
+      ...brief.safeToBuild.facts.map((f) => f.id),
+      ...brief.askHumanFirst.contestedFacts.map((f) => f.id),
+      ...brief.askHumanFirst.questions.map((q) => q.id),
+    ];
+    expect(briefIds).not.toContain(junk.id);
+
+    // still fully inspectable: content, provenance, and the reason trail.
+    const trace = await core.traceToSource(junk.id);
+    expect(trace.spans.length).toBeGreaterThanOrEqual(2);
+    expect(trace.spans.some((s) => s.source.startsWith("retractions/"))).toBe(true);
+    expect((await core.getNode(junk.id))?.status).toBe("retracted");
+
+    // double retract is refused: the state is already what the human asked for.
+    await expect(core.retract(junk.id, "again")).rejects.toThrow(/already retracted/);
+
+    // decided CAN be retracted with explicit force, as the documented override.
+    const forced = await core.retract(decision.id, "test override", { force: true });
+    expect(forced.status).toBe("retracted");
+  });
+
   it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
     // a session-end hook write: evidence appended, never distilled.
     await store.insertEvidence({
