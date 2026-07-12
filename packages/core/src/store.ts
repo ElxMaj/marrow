@@ -889,6 +889,21 @@ export class Store {
 
   /** Dismiss a catch question: the human marked it as noise. The reason is
    *  recorded as answer-style evidence and linked as provenance. */
+  /** The human-only correction: mark a false memory retracted so it stops
+   *  surfacing, with the reason linked as provenance. Content and history stay
+   *  (nothing is erased); only the CLI/web retract path calls this, never an
+   *  MCP tool. */
+  async retract(nodeId: string, nodeKind: DistilledKind, span: ProvenanceSpan): Promise<void> {
+    const table = tableForKind(nodeKind);
+    await this.tx(async (client) => {
+      await client.query(
+        `update ${table} set status = 'retracted', confidence_source = 'human', confidence_value = 1, updated_at = $2 where id = $1`,
+        [nodeId, new Date().toISOString()],
+      );
+      await this.insertProvenance(client, nodeId, nodeKind, [span]);
+    });
+  }
+
   async dismissQuestion(questionId: string, span: ProvenanceSpan): Promise<void> {
     await this.tx(async (client) => {
       await client.query(
@@ -1127,19 +1142,19 @@ export class Store {
     const like = `%${escapeLike(query)}%`;
     const [entities, decisions, questions, goals] = await Promise.all([
       this.pool.query<{ id: string }>(
-        "select id from entity where name ilike $1 or coalesce(description, '') ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
+        "select id from entity where (name ilike $1 or coalesce(description, '') ilike $1) and status <> 'retracted' order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from decision where title ilike $1 or rationale ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
+        "select id from decision where (title ilike $1 or rationale ilike $1) and status <> 'retracted' order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from question where prompt ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
+        "select id from question where prompt ilike $1 and status <> 'retracted' order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
       this.pool.query<{ id: string }>(
-        "select id from goal where title ilike $1 or coalesce(description, '') ilike $1 order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
+        "select id from goal where (title ilike $1 or coalesce(description, '') ilike $1) and status <> 'retracted' order by (status in ('superseded','dismissed')) asc, updated_at desc limit $2",
         [like, limit],
       ),
     ]);
@@ -1252,7 +1267,9 @@ export class Store {
               : row.node_kind === "goal"
                 ? await this.getGoal(row.node_id)
                 : undefined;
-      if (node) out.push(node);
+      // a retracted node is a human-corrected false memory: still inspectable
+      // by id, never served by retrieval.
+      if (node && node.status !== "retracted") out.push(node);
     }
     return out;
   }

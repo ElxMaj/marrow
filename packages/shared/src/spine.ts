@@ -8,7 +8,14 @@ import { z } from "zod";
 // contracts between core and web without adding IO.
 
 /** The states a distilled fact can be in. Nothing outside these is valid. */
-export const StatusSchema = z.enum(["open", "decided", "contested", "superseded", "dismissed"]);
+export const StatusSchema = z.enum([
+  "open",
+  "decided",
+  "contested",
+  "superseded",
+  "dismissed",
+  "retracted",
+]);
 export type Status = z.infer<typeof StatusSchema>;
 
 /**

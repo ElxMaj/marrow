@@ -21,7 +21,7 @@ import {
 import { colorStatus, dim } from "./color.js";
 import { watchFolder } from "./watch.js";
 
-const STATUSES: readonly Status[] = ["open", "decided", "contested", "superseded"];
+const STATUSES: readonly Status[] = ["open", "decided", "contested", "superseded", "retracted"];
 const isStatus = (value: string): value is Status => STATUSES.some((s) => s === value);
 
 const flagValue = (args: string[], name: string): string | undefined => {
@@ -236,6 +236,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   distill <evidenceId>        Distill an evidence row already ingested
   distill --pending [--limit N]   Drain the undistilled backlog, newest first (default 50)
   answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
+  retract <nodeId> --reason "..." [--force]   Human-only: a false memory stops surfacing (kept, never erased)
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
   goal propose "<title>" --type product|user --evidence <id> [--start N --end N]
@@ -561,6 +562,15 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       await core.distill(evidenceId);
       await core.linkAndMerge(evidenceId);
       return { evidenceId, nodes: await core.getNodesForEvidence(evidenceId) };
+    }
+
+    case "retract": {
+      const nodeId = positional(rest);
+      const reason = flagValue(rest, "--reason");
+      if (!nodeId || reason === undefined) {
+        throw new Error('Usage: marrow retract <nodeId> --reason "why this is false" [--force]');
+      }
+      return { retracted: await core.retract(nodeId, reason, { force: rest.includes("--force") }) };
     }
 
     case "answer": {

@@ -1062,3 +1062,54 @@ describe("dedupe delete completeness", () => {
     expect(all.every((e) => e.fromId !== dupe.id && e.toId !== dupe.id)).toBe(true);
   });
 });
+
+describe("retract (the human-only correction)", () => {
+  const modelConf = { value: 0.6, source: "model" as const };
+
+  it("sets retracted with human confidence and links the reason as provenance", async () => {
+    const ev = await store.insertEvidence({ text: "hallucinated fact here", source: "room/h.md" });
+    const dec = await store.insertDecision({
+      title: "We use a message queue",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 11 }],
+    });
+    const reason = await store.insertEvidence({
+      text: "never actually said in the room",
+      source: `retractions/${dec.id}`,
+    });
+    await store.retract(dec.id, "decision", { evidenceId: reason.id, start: 0, end: 10 });
+
+    const after = await store.getDecision(dec.id);
+    expect(after?.status).toBe("retracted");
+    expect(after?.confidence.source).toBe("human");
+    expect(after?.provenance.some((p) => p.evidenceId === reason.id)).toBe(true);
+    // content survives: nothing is erased.
+    expect(after?.title).toBe("We use a message queue");
+  });
+
+  it("retracted nodes vanish from keyword search and semantic hydration", async () => {
+    const ev = await store.insertEvidence({ text: "retractable topic notes", source: "room/r.md" });
+    const dec = await store.insertDecision({
+      title: "retractable widget policy",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: ev.id, start: 0, end: 11 }],
+    });
+    expect((await store.searchNodes("retractable widget")).map((n) => n.id)).toContain(dec.id);
+
+    const reason = await store.insertEvidence({
+      text: "false memory",
+      source: `retractions/${dec.id}`,
+    });
+    await store.retract(dec.id, "decision", { evidenceId: reason.id, start: 0, end: 5 });
+
+    expect((await store.searchNodes("retractable widget")).map((n) => n.id)).not.toContain(dec.id);
+    // still inspectable by id: invalidation of retrieval, not erasure.
+    expect((await store.getDecision(dec.id))?.title).toBe("retractable widget policy");
+  });
+});
