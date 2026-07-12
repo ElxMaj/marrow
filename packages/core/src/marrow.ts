@@ -267,7 +267,12 @@ export interface VerifyReport {
 
 /** One graph-hygiene finding from a lint sweep. */
 export interface LintIssue {
-  kind: "duplicate_nodes" | "contradiction" | "dead_edge" | "instruction_smell";
+  kind:
+    | "duplicate_nodes"
+    | "near_duplicate_nodes"
+    | "contradiction"
+    | "dead_edge"
+    | "instruction_smell";
   detail: string;
   nodeIds: string[];
 }
@@ -277,6 +282,7 @@ export interface LintReport {
   issues: LintIssue[];
   counts: {
     duplicateNodes: number;
+    nearDuplicates: number;
     contradictions: number;
     deadEdges: number;
     instructionSmells: number;
@@ -1877,6 +1883,45 @@ export class Marrow {
       }
     }
 
+    // 1.6 semantic near-duplicates: paraphrase pairs the exact-title pass
+    //     cannot see. Bounded (cap the scanned nodes, k=5 neighbors each),
+    //     read-only, and each unordered pair reports once. Conflicting pairs
+    //     are skipped: the contradiction check below owns those.
+    const LINT_NEAR_DUP_CAP = 500;
+    const threshold = Number(process.env.MARROW_DUP_DISTANCE) || 0.15;
+    const seenPairs = new Set<string>();
+    const scannable = [...decisions, ...goals]
+      .filter(
+        (node) =>
+          node.status === "open" || node.status === "decided" || node.status === "contested",
+      )
+      .slice(0, LINT_NEAR_DUP_CAP);
+    const byId = new Map(scannable.map((node) => [node.id, node]));
+    for (const node of scannable) {
+      for (const near of await this.store.nearestNodesWithDistance(node.id, node.kind, 5)) {
+        if (!Number.isFinite(near.distance) || near.distance > threshold) break;
+        const other = byId.get(near.id);
+        if (!other) continue;
+        // exact-title groups already report as duplicate_nodes above.
+        if (normalizeTitle(other.title) === normalizeTitle(node.title)) continue;
+        const conflicts =
+          node.kind === "decision" && other.kind === "decision"
+            ? decisionsConflict(node, other) !== undefined
+            : node.kind === "goal" && other.kind === "goal"
+              ? goalsConflict(node, other) !== undefined
+              : false;
+        if (conflicts) continue;
+        const pairKey = [node.id, other.id].sort().join(":");
+        if (seenPairs.has(pairKey)) continue;
+        seenPairs.add(pairKey);
+        issues.push({
+          kind: "near_duplicate_nodes",
+          detail: `"${node.title}" and "${other.title}" look like the same ${node.kind} (distance ${near.distance.toFixed(3)})`,
+          nodeIds: [node.id, other.id],
+        });
+      }
+    }
+
     // 2. contradictions: two decisions that conflict on a shared term.
     for (let i = 0; i < decisions.length; i += 1) {
       const a = decisions[i];
@@ -1945,6 +1990,7 @@ export class Marrow {
       issues,
       counts: {
         duplicateNodes: issues.filter((issue) => issue.kind === "duplicate_nodes").length,
+        nearDuplicates: issues.filter((issue) => issue.kind === "near_duplicate_nodes").length,
         contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
         deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
         instructionSmells: issues.filter((issue) => issue.kind === "instruction_smell").length,

@@ -1127,6 +1127,7 @@ export function formatResult(result: unknown): string {
       issues: { kind: string; detail: string; nodeIds: string[] }[];
       counts: {
         duplicateNodes: number;
+        nearDuplicates?: number;
         contradictions: number;
         deadEdges: number;
         instructionSmells?: number;
@@ -1139,7 +1140,7 @@ export function formatResult(result: unknown): string {
       (issue) => `  [${issue.kind}] ${issue.detail}${dim(` · ${issue.nodeIds.join(", ")}`)}`,
     );
     return [
-      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell`,
+      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.nearDuplicates ?? 0} near duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell`,
       ...lines,
     ].join("\n");
   }

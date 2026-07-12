@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { createConceptEmbedding } from "./demo.js";
 import { findDuplicateTitles } from "./lint.js";
 import { isFactStale, Marrow } from "./marrow.js";
 import { synthHeadline } from "./synthesize.js";
@@ -607,6 +608,46 @@ describe("write-time near-duplicate guard (decisions and goals)", () => {
       1,
     );
     expect(again.provenance.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("lint finds semantic near-duplicates", () => {
+  it("reports a reworded pair once, read-only, and skips exact-title groups", async () => {
+    const ev = await store.insertEvidence({
+      text: "exports run in the background and the client checks back",
+      source: "room/neardup.md",
+    });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 12 }];
+    const modelConf = { value: 0.6, source: "model" as const };
+    void modelConf;
+    // the concept embedding separates topics honestly: two export-topic
+    // rewordings sit close, the billing decision sits far. proposeNode embeds
+    // all three; differing normalized titles mean nothing merges.
+    const topical = new Marrow(store, undefined, createConceptEmbedding());
+    const first = await topical.proposeNode({
+      kind: "decision",
+      title: "Exports run async in the background",
+      provenance: prov,
+    });
+    const second = await topical.proposeNode({
+      kind: "decision",
+      title: "Exports poll in the background as async downloads",
+      provenance: prov,
+    });
+    await topical.proposeNode({
+      kind: "decision",
+      title: "Billing webhooks retry with backoff",
+      provenance: prov,
+    });
+
+    const report = await topical.lint();
+    const nearDup = report.issues.filter((issue) => issue.kind === "near_duplicate_nodes");
+    expect(nearDup.length).toBe(1);
+    expect(nearDup[0]?.nodeIds.sort()).toEqual([first.id, second.id].sort());
+    expect(report.counts.nearDuplicates).toBe(1);
+    // read-only: statuses untouched.
+    expect((await store.getDecision(first.id))?.status).toBe("open");
+    expect((await store.getDecision(second.id))?.status).toBe("open");
   });
 });
 
