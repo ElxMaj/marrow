@@ -400,13 +400,32 @@ export class Store {
     return { id, kind: "evidence", text, source: draft.source, createdAt };
   }
 
+  /** The ONE exception to append-only evidence, and it is loud about it: the
+   *  payload of a single row is overwritten with a fixed tombstone, the
+   *  moment is stamped, and the row (id, source, created_at, citations)
+   *  survives. Callable from the human CLI path only; there is deliberately
+   *  no MCP route here. Refuses a second redaction: the state already is
+   *  what the human asked for. */
+  async redactEvidence(evidenceId: string, reason: string): Promise<void> {
+    const res = await this.pool.query(
+      `update evidence
+          set text = $2, redacted_at = $3, redacted_reason = $4
+        where id = $1 and redacted_at is null`,
+      [evidenceId, `[redacted: ${reason}]`, new Date().toISOString(), reason],
+    );
+    if (res.rowCount === 0) {
+      throw new Error(`redact: evidence ${evidenceId} not found or already redacted`);
+    }
+  }
+
   async getEvidence(id: string): Promise<Evidence | undefined> {
     const res = await this.pool.query<{
       id: string;
       text: string;
       source: string;
       created_at: Date;
-    }>("select id, text, source, created_at from evidence where id = $1", [id]);
+      redacted_at: Date | null;
+    }>("select id, text, source, created_at, redacted_at from evidence where id = $1", [id]);
     const row = res.rows[0];
     if (!row) return undefined;
     return {
@@ -415,6 +434,7 @@ export class Store {
       text: row.text,
       source: row.source,
       createdAt: iso(row.created_at),
+      ...(row.redacted_at !== null ? { redactedAt: iso(row.redacted_at) } : {}),
     };
   }
 

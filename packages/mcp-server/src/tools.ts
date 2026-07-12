@@ -206,7 +206,7 @@ export function createTools(core: Marrow): ToolDef[] {
     {
       name: "append_evidence",
       description:
-        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted. Credential-shaped spans (API keys, tokens, private keys) are replaced with [redacted:kind] placeholders before storage, because evidence cannot be deleted afterward. Distills inline by default when a model is configured, so what you append is retrievable in this same session; distillation only proposes OPEN nodes, never decided ones. Pass distill: false to defer (faster; drain later with marrow distill --pending).",
+        "Append raw room evidence (a transcript, note, message) verbatim. Append only: it is never edited or deleted (one human-only, audited CLI redaction exception exists for leaked secrets; no MCP path can trigger it). Credential-shaped spans (API keys, tokens, private keys) are replaced with [redacted:kind] placeholders before storage, because evidence cannot be deleted afterward. Distills inline by default when a model is configured, so what you append is retrievable in this same session; distillation only proposes OPEN nodes, never decided ones. Pass distill: false to defer (faster; drain later with marrow distill --pending).",
       inputSchema: {
         type: "object",
         properties: {

@@ -1113,3 +1113,32 @@ describe("retract (the human-only correction)", () => {
     expect((await store.getDecision(dec.id))?.title).toBe("retractable widget policy");
   });
 });
+
+describe("redaction: the one visible exception to append-only evidence", () => {
+  it("tombstones the payload while the row and its identity survive", async () => {
+    const ev = await store.insertEvidence({
+      // scrub-proof phrasing: a fake secret shape the scrub does not catch,
+      // standing in for anything that slips the pre-append detectors.
+      text: "the wifi password is horse-battery-staple-42, do not share",
+      source: "standups/leak2.md",
+    });
+    await store.redactEvidence(ev.id, "leaked wifi credential");
+
+    const after = await store.getEvidence(ev.id);
+    expect(after?.text).toBe("[redacted: leaked wifi credential]");
+    expect(after?.text).not.toContain("horse-battery");
+    expect(after?.redactedAt).toBeDefined();
+    // identity survives: id, source, created_at.
+    expect(after?.id).toBe(ev.id);
+    expect(after?.source).toBe("standups/leak2.md");
+    expect(after?.createdAt).toBe(ev.createdAt);
+    // and the payload is gone from search too.
+    expect((await store.searchEvidence("horse-battery")).length).toBe(0);
+  });
+
+  it("refuses a second redaction: the state already is what the human asked for", async () => {
+    const ev = await store.insertEvidence({ text: "double redact target", source: "room/dr.md" });
+    await store.redactEvidence(ev.id, "first");
+    await expect(store.redactEvidence(ev.id, "second")).rejects.toThrow(/already redacted/);
+  });
+});
