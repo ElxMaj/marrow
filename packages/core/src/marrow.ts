@@ -2307,7 +2307,8 @@ export class Marrow {
   async redact(
     evidenceId: string,
     reason: string,
-  ): Promise<{ evidenceId: string; auditEvidenceId: string }> {
+    opts: { cascade?: boolean; force?: boolean } = {},
+  ): Promise<{ evidenceId: string; auditEvidenceId: string; retractedNodeIds: string[] }> {
     if (!reason || reason.trim().length === 0) {
       throw new Error("redact: a reason is required");
     }
@@ -2317,21 +2318,80 @@ export class Marrow {
       throw new Error(`redact: evidence ${evidenceId} is already redacted`);
     }
     const citing = await this.store.getNodesForEvidence(evidenceId);
-    if (citing.length > 0) {
-      const list = citing
-        .map((node) => `${node.id} [${node.status}] ${nodeTitle(node)}`)
-        .join("; ");
+    const describe = (node: Distilled): string => `${node.id} [${node.status}] ${nodeTitle(node)}`;
+    if (citing.length > 0 && !opts.cascade) {
       throw new Error(
-        `redact: ${citing.length} distilled node${citing.length === 1 ? "" : "s"} cite this evidence and would keep quoting it: ${list}. Cascade support arrives with the second redaction PR; until then retract the citing nodes first.`,
+        `redact: ${citing.length} distilled node${citing.length === 1 ? "" : "s"} cite this evidence and would keep quoting it: ${citing.map(describe).join("; ")}. Re-run with --cascade to retract and tombstone them too.`,
       );
     }
-    await this.store.redactEvidence(evidenceId, reason);
+    // the blast radius rule for settled truth: cascading over a DECIDED node
+    // needs the same explicit force as retracting one directly.
+    const decided = citing.filter((node) => node.status === "decided");
+    if (decided.length > 0 && !opts.force) {
+      throw new Error(
+        `redact: --cascade would retract ${decided.length} DECIDED node${decided.length === 1 ? "" : "s"}: ${decided.map(describe).join("; ")}. Settled truth is normally replaced through the answer loop; pass --force to cascade over it anyway.`,
+      );
+    }
+
     // the audit trail is ordinary append-only evidence, and never the secret.
+    // It is written FIRST so every cascaded retraction can cite it, and it
+    // names each decided node the human forced over.
+    const auditLines = [
+      `redacted ${evidenceId}: ${reason}`,
+      ...(citing.length > 0
+        ? [`cascaded over ${citing.length} citing node${citing.length === 1 ? "" : "s"}.`]
+        : []),
+      ...decided.map((node) => `forced over decided node ${node.id} (${nodeTitle(node)}).`),
+    ];
     const audit = await this.store.insertEvidence({
-      text: `redacted ${evidenceId}: ${reason}`,
+      text: auditLines.join("\n"),
       source: `redactions/${evidenceId}`,
     });
-    return { evidenceId, auditEvidenceId: audit.id };
+    const auditSpan = { evidenceId: audit.id, start: 0, end: auditLines[0]?.length ?? 1 };
+
+    const retractedNodeIds: string[] = [];
+    for (const node of citing) {
+      if (node.status !== "retracted") {
+        await this.store.retract(node.id, node.kind, auditSpan);
+      }
+      await this.store.tombstoneNodeText(
+        node.id,
+        node.kind,
+        `[redacted ${node.id}: cited ${evidenceId}]`,
+      );
+      await this.store.deleteEmbeddingsFor(node.id, node.kind);
+      retractedNodeIds.push(node.id);
+    }
+
+    await this.store.redactEvidence(evidenceId, reason);
+    return { evidenceId, auditEvidenceId: audit.id, retractedNodeIds };
+  }
+
+  /**
+   * The completeness audit for one redaction: the payload is the tombstone,
+   * every citing node is retracted with tombstoned text, and no embedding
+   * rows remain for them. Read-only; doctor runs it over every redacted row.
+   */
+  async redactCheck(evidenceId: string): Promise<{ ok: boolean; problems: string[] }> {
+    const problems: string[] = [];
+    const evidence = await this.store.getEvidence(evidenceId);
+    if (!evidence) return { ok: false, problems: [`evidence ${evidenceId} not found`] };
+    if (evidence.redactedAt === undefined) problems.push("redacted_at is not set");
+    if (!evidence.text.startsWith("[redacted:")) problems.push("payload is not the tombstone");
+    for (const node of await this.store.getNodesForEvidence(evidenceId)) {
+      // every node still citing the row once quoted the secret: each must be
+      // retracted, tombstoned, and stripped of its embedding.
+      if (node.status !== "retracted") {
+        problems.push(`${node.id} is ${node.status}, not retracted`);
+      }
+      if (!nodeTitle(node).startsWith("[redacted")) {
+        problems.push(`${node.id} text is not tombstoned`);
+      }
+      if (await this.store.hasEmbedding(node.id, node.kind)) {
+        problems.push(`${node.id} still has an embedding row`);
+      }
+    }
+    return { ok: problems.length === 0, problems };
   }
 
   /**

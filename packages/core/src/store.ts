@@ -418,6 +418,71 @@ export class Store {
     }
   }
 
+  /** Cascade support for redaction: overwrite a citing node's text columns
+   *  with a per-node tombstone. Only the redaction path calls this. */
+  async tombstoneNodeText(nodeId: string, kind: DistilledKind, tombstone: string): Promise<void> {
+    if (kind === "entity") {
+      await this.pool.query("update entity set name = $2, description = null where id = $1", [
+        nodeId,
+        tombstone,
+      ]);
+    } else if (kind === "decision") {
+      await this.pool.query("update decision set title = $2, rationale = '' where id = $1", [
+        nodeId,
+        tombstone,
+      ]);
+    } else if (kind === "goal") {
+      await this.pool.query("update goal set title = $2, description = null where id = $1", [
+        nodeId,
+        tombstone,
+      ]);
+    } else {
+      await this.pool.query("update question set prompt = $2 where id = $1", [nodeId, tombstone]);
+    }
+  }
+
+  /** Remove a node's embedding rows: the secret's vector is derived data, and
+   *  deleting it matches the dedupe-delete precedent. */
+  async deleteEmbeddingsFor(nodeId: string, kind: DistilledKind): Promise<void> {
+    await this.pool.query("delete from embedding where node_id = $1 and node_kind = $2", [
+      nodeId,
+      kind,
+    ]);
+  }
+
+  /** Whether a node still has an embedding row (the completeness audit). */
+  async hasEmbedding(nodeId: string, kind: DistilledKind): Promise<boolean> {
+    const res = await this.pool.query(
+      "select 1 from embedding where node_id = $1 and node_kind = $2 limit 1",
+      [nodeId, kind],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  /** Every redacted evidence row, oldest first, bounded: the completeness
+   *  audit's worklist. */
+  async listRedactedEvidence(limit = 100): Promise<Evidence[]> {
+    const res = await this.pool.query<{
+      id: string;
+      text: string;
+      source: string;
+      created_at: Date;
+      redacted_at: Date;
+    }>(
+      `select id, text, source, created_at, redacted_at from evidence
+        where redacted_at is not null order by redacted_at asc limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      id: row.id,
+      kind: "evidence" as const,
+      text: row.text,
+      source: row.source,
+      createdAt: iso(row.created_at),
+      redactedAt: iso(row.redacted_at),
+    }));
+  }
+
   async getEvidence(id: string): Promise<Evidence | undefined> {
     const res = await this.pool.query<{
       id: string;
