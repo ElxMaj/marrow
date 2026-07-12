@@ -75,6 +75,53 @@ export async function doctor(
           remedy: "Run `marrow migrate`.",
         });
       }
+
+      // Redaction completeness: every redacted evidence row must be a full
+      // tombstone with its citing nodes retracted, tombstoned, and stripped
+      // of embeddings. Bounded; skipped cleanly on schemas from before 0018.
+      try {
+        const redacted = await pool.query<{ id: string }>(
+          "select id from evidence where redacted_at is not null order by redacted_at asc limit 100",
+        );
+        if (redacted.rows.length === 0) {
+          checks.push({ name: "Redactions", status: "ok", detail: "none recorded" });
+        } else {
+          const incomplete: string[] = [];
+          for (const row of redacted.rows) {
+            const bad = await pool.query<{ node_id: string }>(
+              `select p.node_id from provenance p
+                 join evidence e on e.id = p.evidence_id
+                where p.evidence_id = $1
+                  and exists (
+                    select 1 from embedding em
+                     where em.node_id = p.node_id and em.node_kind = p.node_kind)
+                limit 1`,
+              [row.id],
+            );
+            if ((bad.rowCount ?? 0) > 0) incomplete.push(row.id);
+          }
+          if (incomplete.length === 0) {
+            checks.push({
+              name: "Redactions",
+              status: "ok",
+              detail: `${redacted.rows.length} recorded, all complete`,
+            });
+          } else {
+            checks.push({
+              name: "Redactions",
+              status: "error",
+              detail: `${incomplete.length} incomplete (${incomplete.slice(0, 3).join(", ")})`,
+              remedy: "Run `marrow redact --check <evidenceId>` for the exact gaps.",
+            });
+          }
+        }
+      } catch {
+        checks.push({
+          name: "Redactions",
+          status: "warn",
+          detail: "skipped (schema predates redaction)",
+        });
+      }
     } catch (err) {
       const code = (err as { code?: string }).code;
       checks.push({

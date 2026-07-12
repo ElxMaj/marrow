@@ -243,7 +243,8 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
   retract <nodeId> --reason "..." [--force]   Human-only: a false memory stops surfacing (kept, never erased)
   history <nodeId>            The replacement lineage: what replaced what, when, and why
-  redact <evidenceId> --reason "..."   Human-only, audited: destroy ONE row's payload (a leaked secret)
+  redact <evidenceId> --reason "..." [--cascade] [--force]   Human-only, audited: destroy ONE row's payload (a leaked secret)
+  redact --check <evidenceId>          Verify a redaction is complete (also runs in marrow doctor)
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
   goal propose "<title>" --type product|user --evidence <id> [--start N --end N]
@@ -573,11 +574,20 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
 
     case "redact": {
       const evidenceId = positional(rest);
+      if (rest.includes("--check")) {
+        if (!evidenceId) throw new Error("Usage: marrow redact --check <evidenceId>");
+        return { evidenceId, ...(await core.redactCheck(evidenceId)) };
+      }
       const reason = flagValue(rest, "--reason");
       if (!evidenceId || reason === undefined) {
-        throw new Error('Usage: marrow redact <evidenceId> --reason "what leaked and why"');
+        throw new Error(
+          'Usage: marrow redact <evidenceId> --reason "what leaked and why" [--cascade] [--force] | marrow redact --check <evidenceId>',
+        );
       }
-      return core.redact(evidenceId, reason);
+      return core.redact(evidenceId, reason, {
+        cascade: rest.includes("--cascade"),
+        force: rest.includes("--force"),
+      });
     }
 
     case "history": {

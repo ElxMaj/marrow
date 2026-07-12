@@ -736,6 +736,69 @@ describe("agent decision gate and truth maintenance", () => {
     await expect(core.redact(cited.id, " ")).rejects.toThrow(/reason is required/);
   });
 
+  it("redact --cascade retracts, tombstones, and strips citing nodes, then --check passes", async () => {
+    const leak = await store.insertEvidence({
+      text: "the deploy key is horse-battery-staple-42, keep it quiet",
+      source: "session/cascade-leak.md",
+    });
+    const openNode = (await core.proposeNode({
+      kind: "decision",
+      title: "Deploy key rotation is manual",
+      provenance: [{ evidenceId: leak.id, start: 0, end: 14 }],
+    })) as { id: string };
+    const decidedNode = await store.insertDecision({
+      title: "Deploys use the shared key",
+      rationale: "",
+      constraint: false,
+      status: "decided",
+      confidence: human,
+      provenance: [{ evidenceId: leak.id, start: 0, end: 14 }],
+    });
+
+    // cascade without force refuses, naming the decided node: settled truth
+    // needs the same explicit override as a direct retract.
+    await expect(core.redact(leak.id, "leaked key", { cascade: true })).rejects.toThrow(
+      decidedNode.id,
+    );
+    // and nothing was destroyed by the refusal.
+    expect((await store.getEvidence(leak.id))?.text).toContain("horse-battery");
+
+    const receipt = await core.redact(leak.id, "leaked key", { cascade: true, force: true });
+    expect(receipt.retractedNodeIds.sort()).toEqual([openNode.id, decidedNode.id].sort());
+
+    // the payload is gone; the audit names the forced decided node, never the secret.
+    expect((await store.getEvidence(leak.id))?.text).toBe("[redacted: leaked key]");
+    const audit = await store.getEvidence(receipt.auditEvidenceId);
+    expect(audit?.text).toContain(`forced over decided node ${decidedNode.id}`);
+    expect(audit?.text).not.toContain("horse-battery");
+
+    // citing nodes: retracted, tombstoned, embedding-free, still inspectable.
+    for (const id of receipt.retractedNodeIds) {
+      const node = await core.getNode(id);
+      expect(node?.status).toBe("retracted");
+      const title = node && "title" in node ? node.title : "";
+      expect(title.startsWith("[redacted")).toBe(true);
+      expect(await store.hasEmbedding(id, node?.kind ?? "decision")).toBe(false);
+    }
+
+    // the completeness audit agrees, and doctor's sweep has nothing to flag.
+    const check = await core.redactCheck(leak.id);
+    expect(check.problems).toEqual([]);
+    expect(check.ok).toBe(true);
+
+    // break it deliberately: a stray embedding row must fail the check.
+    await store.insertEmbedding({
+      nodeId: openNode.id,
+      nodeKind: "decision",
+      model: "fake-emb",
+      dim: 4,
+      vector: [0, 0, 0, 0],
+    });
+    const broken = await core.redactCheck(leak.id);
+    expect(broken.ok).toBe(false);
+    expect(broken.problems.join(" ")).toContain("embedding");
+  });
+
   it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
     // a session-end hook write: evidence appended, never distilled.
     await store.insertEvidence({
