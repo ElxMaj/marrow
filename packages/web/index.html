@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#100f0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#08090b" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f4efe4" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta
       name="description"
       content="Marrow distills the product room into decided-versus-open truth with provenance, served task-scoped to coding agents."
@@ -24,7 +25,7 @@
           document.documentElement.dataset.theme = theme;
           document
             .querySelector('meta[name="theme-color"]')
-            ?.setAttribute("content", theme === "light" ? "#f4efe4" : "#100f0d");
+            ?.setAttribute("content", theme === "light" ? "#f4efe4" : "#08090b");
         } catch (e) {
           document.documentElement.dataset.theme = "dark";
         }
