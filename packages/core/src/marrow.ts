@@ -264,7 +264,7 @@ export interface VerifyReport {
 
 /** One graph-hygiene finding from a lint sweep. */
 export interface LintIssue {
-  kind: "duplicate_nodes" | "contradiction" | "dead_edge";
+  kind: "duplicate_nodes" | "contradiction" | "dead_edge" | "instruction_smell";
   detail: string;
   nodeIds: string[];
 }
@@ -272,7 +272,12 @@ export interface LintIssue {
 /** A read-only lint report: what a human should clean up. */
 export interface LintReport {
   issues: LintIssue[];
-  counts: { duplicateNodes: number; contradictions: number; deadEdges: number };
+  counts: {
+    duplicateNodes: number;
+    contradictions: number;
+    deadEdges: number;
+    instructionSmells: number;
+  };
 }
 
 /** One fact in a synthesis digest. */
@@ -1760,12 +1765,30 @@ export class Marrow {
       (node) => node.confidence.source === "model",
     );
     const results: VerifyResult[] = [];
+    const evidenceCache = new Map<string, string | undefined>();
+    const spanText = async (span: {
+      evidenceId: string;
+      start: number;
+      end: number;
+    }): Promise<string> => {
+      if (!evidenceCache.has(span.evidenceId)) {
+        evidenceCache.set(span.evidenceId, (await this.store.getEvidence(span.evidenceId))?.text);
+      }
+      return evidenceCache.get(span.evidenceId)?.slice(span.start, span.end) ?? "";
+    };
     for (const node of proposed) {
       const conflict =
         node.kind === "decision"
           ? decided.find((other) => other.id !== node.id && decisionsConflict(node, other))
           : undefined;
-      const reasons = skepticReasons(node, conflict !== undefined);
+      let smells = false;
+      for (const span of node.provenance) {
+        if (instructionSmells(await spanText(span)).length > 0) {
+          smells = true;
+          break;
+        }
+      }
+      const reasons = skepticReasons(node, conflict !== undefined, smells);
       const verdict = verdictFor(reasons);
       await this.store.insertVerification({
         nodeId: node.id,
@@ -1859,12 +1882,43 @@ export class Marrow {
       }
     }
 
+    // 4. instruction smells: a cited span that looks instruction-shaped sits
+    //    in the brain until the moment it is quoted into an agent's context;
+    //    the scheduled sweep surfaces it first. Bounded: each evidence row is
+    //    fetched once, capped like the edge list above.
+    const LINT_EVIDENCE_CAP = 2000;
+    const evidenceCache = new Map<string, string | undefined>();
+    const smellyNodes = new Map<string, { nodeIds: string[]; smells: Set<string> }>();
+    for (const node of [...entities, ...decisions, ...goals]) {
+      for (const span of node.provenance) {
+        if (!evidenceCache.has(span.evidenceId)) {
+          if (evidenceCache.size >= LINT_EVIDENCE_CAP) continue;
+          evidenceCache.set(span.evidenceId, (await this.store.getEvidence(span.evidenceId))?.text);
+        }
+        const text = evidenceCache.get(span.evidenceId)?.slice(span.start, span.end) ?? "";
+        const smells = instructionSmells(text);
+        if (smells.length === 0) continue;
+        const entry = smellyNodes.get(span.evidenceId) ?? { nodeIds: [], smells: new Set() };
+        if (!entry.nodeIds.includes(node.id)) entry.nodeIds.push(node.id);
+        for (const smell of smells) entry.smells.add(smell);
+        smellyNodes.set(span.evidenceId, entry);
+      }
+    }
+    for (const [evidenceId, entry] of smellyNodes) {
+      issues.push({
+        kind: "instruction_smell",
+        detail: `evidence ${evidenceId} contains instruction-shaped text (${[...entry.smells].join(", ")}) cited by ${entry.nodeIds.length} node${entry.nodeIds.length === 1 ? "" : "s"}`,
+        nodeIds: entry.nodeIds,
+      });
+    }
+
     return {
       issues,
       counts: {
         duplicateNodes: issues.filter((issue) => issue.kind === "duplicate_nodes").length,
         contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
         deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
+        instructionSmells: issues.filter((issue) => issue.kind === "instruction_smell").length,
       },
     };
   }

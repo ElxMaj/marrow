@@ -6,7 +6,11 @@
 // changes a node's status: a verdict is advisory, and only a human answer
 // promotes a fact.
 
-export type VerifyReason = "single_source" | "weak_provenance" | "contradicts_decided";
+export type VerifyReason =
+  | "single_source"
+  | "weak_provenance"
+  | "contradicts_decided"
+  | "instruction_smell";
 export type VerifyVerdict = "survived" | "flagged";
 
 // a cited span shorter than this is too thin to stand on its own.
@@ -21,6 +25,8 @@ const MIN_CONFIDENCE = 0.5;
  * - single_source: every provenance span points at the same evidence row.
  * - weak_provenance: every cited span is very short, or the model confidence is low.
  * - contradicts_decided: the proposal contradicts an already-decided fact.
+ * - instruction_smell: a cited span looks instruction-shaped (the caller
+ *   resolves span texts and passes the detector verdict, keeping this pure).
  */
 export function skepticReasons(
   node: {
@@ -28,6 +34,7 @@ export function skepticReasons(
     provenance: { evidenceId: string; start: number; end: number }[];
   },
   decidedConflict: boolean,
+  spanSmells = false,
 ): VerifyReason[] {
   const reasons: VerifyReason[] = [];
   const evidenceIds = new Set(node.provenance.map((span) => span.evidenceId));
@@ -35,6 +42,7 @@ export function skepticReasons(
   const shortSpans = node.provenance.every((span) => span.end - span.start < MIN_SPAN_CHARS);
   if (shortSpans || node.confidence.value < MIN_CONFIDENCE) reasons.push("weak_provenance");
   if (decidedConflict) reasons.push("contradicts_decided");
+  if (spanSmells) reasons.push("instruction_smell");
   return reasons;
 }
 

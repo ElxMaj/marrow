@@ -43,9 +43,19 @@ describe("skeptic reasons", () => {
     expect(reasons).toEqual(["contradicts_decided"]);
   });
 
+  it("flags instruction smells when the caller detected one in a cited span", () => {
+    const reasons = skepticReasons(
+      { confidence: { value: 0.9 }, provenance: [span("ev_a", 0, 40), span("ev_b", 0, 40)] },
+      false,
+      true,
+    );
+    expect(reasons).toEqual(["instruction_smell"]);
+  });
+
   it("verdictFor: no reasons survives, any reason flags", () => {
     expect(verdictFor([])).toBe("survived");
     expect(verdictFor(["single_source"])).toBe("flagged");
     expect(verdictFor(["single_source", "weak_provenance"])).toBe("flagged");
+    expect(verdictFor(["instruction_smell"])).toBe("flagged");
   });
 });
