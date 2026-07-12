@@ -22,6 +22,10 @@ Those are wikis, hand-written pages that go stale. Marrow is distilled from raw 
 
 Cursor is the coding agent. Marrow is not an agent or an editor, it feeds the agent context. Lore and Tenet are code-rooted, they distill from git and the codebase to answer "what does the code do." Marrow is product-rooted, its input is the room where the product was decided, and it answers "what should the code do and why." We never parse the repo as a source of truth. See [compare/lore-tenet.md](./compare/lore-tenet.md).
 
+## How is it different from Mem0 or Zep?
+
+Those are memory layers for conversational agents: they remember what a user said. Marrow is the product-context layer for coding agents: it remembers what the team decided, with a status, the verbatim span it came from, and a human promote gate. The measured differences live on the write side (false-memory rate gated at zero, duplicates under re-ingestion at zero, the metrics in [evaluating-agent-memory.md](./evaluating-agent-memory.md)), in time (the replacement lineage), and in trust (nothing agent-facing writes any status, and quoted evidence is framed and screened as data). See [compare/mem0-zep.md](./compare/mem0-zep.md), and [compare/claude-md.md](./compare/claude-md.md) for the strongest non-product alternative.
+
 ## How is it different from Langfuse?
 
 Langfuse is an observability product you run alongside your stack. Marrow has Langfuse-shaped observability built in (latency, tokens, cost, errors, a readable trace) on the same Postgres, no extra service. It is for Marrow's own pipeline, not a general LLM tracer for your whole app. See [observability.md](./observability.md).

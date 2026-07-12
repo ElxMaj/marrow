@@ -66,6 +66,7 @@ After ingestion the brain asks the developer when something is ambiguous, contra
 - [Vs Notion / Confluence](./docs/compare/notion.md)
 - [Vs Lore / Tenet](./docs/compare/lore-tenet.md)
 - [Vs Mem0 / Zep](./docs/compare/mem0-zep.md)
+- [Vs "just put it in CLAUDE.md"](./docs/compare/claude-md.md)
 
 ## Security and trust
 
