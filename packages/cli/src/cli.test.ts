@@ -376,6 +376,45 @@ describe("cli", () => {
     await expect(runCommand(core, ["frobnicate"])).rejects.toThrow(/Unknown command/);
   });
 
+  it("loads DATABASE_URL from ./.env when unset, and never overrides a set one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "marrow-envfile-"));
+    writeFileSync(join(dir, ".env"), `DATABASE_URL=${DATABASE_URL}\n`);
+    // unset in the environment: the .env fallback carries the demo through.
+    const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
+    const result = spawnSync(tsxBin, [join(here, "main.ts"), "decisions"], {
+      cwd: dir,
+      env: { ...withoutEnv("DATABASE_URL"), PATH: process.env.PATH ?? "" },
+      encoding: "utf8",
+    });
+    expect(result.stderr).toContain("Loaded DATABASE_URL from .env");
+    expect(result.status).toBe(0);
+
+    // an explicitly set (but broken) URL wins over .env: no silent override.
+    const overridden = spawnSync(tsxBin, [join(here, "main.ts"), "decisions"], {
+      cwd: dir,
+      env: {
+        ...process.env,
+        DATABASE_URL: "postgres://nobody:nope@localhost:59999/absent",
+      },
+      encoding: "utf8",
+    });
+    expect(overridden.stderr).not.toContain("Loaded DATABASE_URL from .env");
+    expect(overridden.status).toBe(3);
+  });
+
+  it("the missing-DATABASE_URL hint is demo-aware: demo never points at migrate", () => {
+    const demo = spawnMain(["demo"], withoutEnv("DATABASE_URL"));
+    expect(demo.status).toBe(3);
+    expect(demo.stderr).toContain("re-run `marrow demo`");
+    expect(demo.stderr).toContain("sets up its own schema");
+    expect(demo.stderr).not.toContain("marrow migrate");
+
+    const other = spawnMain(["decisions"], withoutEnv("DATABASE_URL"));
+    expect(other.status).toBe(3);
+    expect(other.stderr).toContain("marrow migrate");
+    expect(other.stderr).toContain("marrow doctor");
+  });
+
   it("maps usage errors to exit code 2 in the process entrypoint", () => {
     const result = spawnMain(["frobnicate"], { ...process.env, DATABASE_URL });
 

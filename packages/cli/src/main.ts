@@ -118,6 +118,20 @@ function version(): string {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
+  // the reflex every dev tool trains: `cp .env.example .env`. Honor it, but
+  // never override an already-set variable, and never fail on a missing or
+  // malformed file (loadEnvFile throws on absence; older runtimes lack it).
+  if (!process.env.DATABASE_URL) {
+    try {
+      process.loadEnvFile(join(process.cwd(), ".env"));
+      if (process.env.DATABASE_URL) {
+        console.error(dim("Loaded DATABASE_URL from .env"));
+      }
+    } catch {
+      // no .env, unreadable, or unsupported runtime: the normal state.
+    }
+  }
+
   // help and version must never require a database (the common first state).
   if (argv.includes("--version") || argv.includes("-v")) {
     console.log(version());
@@ -193,7 +207,10 @@ main().catch((error: unknown) => {
     hint = "\nThe schema is not migrated. Run `marrow migrate`.";
   } else if (/DATABASE_URL is not set/i.test(message)) {
     exitCode = 3;
-    hint = "\nPoint DATABASE_URL at your Postgres, then run `marrow migrate`.";
+    hint =
+      process.argv[2] === "demo"
+        ? "\nPoint DATABASE_URL at your Postgres and re-run `marrow demo`; demo sets up its own schema. From a clone: `pnpm db:up`, then the URL in .env.example."
+        : "\nPoint DATABASE_URL at your Postgres, then run `marrow migrate` (or `marrow doctor` to check the whole stack). From a clone: `pnpm db:up`, then the URL in .env.example.";
   } else if (
     /^usage:/i.test(message) ||
     /unknown command/i.test(message) ||

@@ -34,7 +34,8 @@ export async function doctor(
       name: "DATABASE_URL",
       status: "error",
       detail: "not set",
-      remedy: "Point DATABASE_URL at your Postgres (Marrow's one piece of infra).",
+      remedy:
+        "Point DATABASE_URL at your Postgres (Marrow's one piece of infra). From a clone: `pnpm db:up`, then export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow (also in .env.example; the CLI reads ./.env).",
     });
     checks.push({ name: "Postgres", status: "warn", detail: "skipped (no DATABASE_URL)" });
     checks.push({ name: "Schema", status: "warn", detail: "skipped (no DATABASE_URL)" });
