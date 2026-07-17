@@ -1,0 +1,1 @@
+{"count":8,"errorCount":0,"totalTokensIn":0,"totalTokensOut":0,"totalCostUsd":0,"p50LatencyMs":2.5,"p95LatencyMs":180.94999999999993,"byKind":{"drift":{"count":1,"errorCount":0,"costUsd":0,"avgLatencyMs":8},"distill":{"count":1,"errorCount":0,"costUsd":0,"avgLatencyMs":273},"search":{"count":6,"errorCount":0,"costUsd":0,"avgLatencyMs":3.5}}}

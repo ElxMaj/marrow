@@ -1,1 +1,4 @@
-demo-static/
+# The static demo snapshot IS committed: it is the deployable artifact the
+# founder ships to the marrow-demo Vercel project. Only its Vercel link and
+# any local server state stay out.
+demo-static/.vercel/
