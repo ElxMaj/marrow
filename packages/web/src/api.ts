@@ -334,16 +334,33 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 
 const MAX_BODY_BYTES = 1_000_000; // 1 MB cap; answers are short, not uploads.
 
+/** A client-caused failure with its own HTTP status. Thrown anywhere under
+ *  handle(), classified by the top-level catch: the API answers 4xx with a
+ *  clean message instead of translating every mistake into a 500. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly allow?: string[];
+  constructor(status: number, message: string, allow?: string[]) {
+    super(message);
+    this.status = status;
+    if (allow !== undefined) this.allow = allow;
+  }
+}
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new Error("request body too large");
+    if (size > MAX_BODY_BYTES) throw new ApiError(413, "request body too large (1MB cap)");
     chunks.push(Buffer.from(chunk));
   }
   if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  } catch {
+    throw new ApiError(400, "request body is not valid JSON");
+  }
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -384,16 +401,49 @@ export function createApiServer(core: Marrow, options: ApiServerOptions = {}): S
   };
   return createServer((req, res) => {
     void handle(core, req, res, options, resolved).catch((error: unknown) => {
+      // classify: a client mistake answers 4xx with a clean message; anything
+      // else logs server-side and answers a generic 500, never leaking
+      // internals into the response body.
+      if (error instanceof ApiError) {
+        if (error.allow !== undefined) res.setHeader("allow", error.allow.join(", "));
+        return send(res, error.status, { error: error.message });
+      }
       const message = error instanceof Error ? error.message : String(error);
-      send(res, 500, { error: message });
+      // core speaks in a consistent voice: "x not found" is the caller naming
+      // a missing id, "y is required / invalid z" is a bad payload.
+      if (/not found/i.test(message)) return send(res, 404, { error: message });
+      if (/is required|invalid /i.test(message)) return send(res, 400, { error: message });
+      console.error("api: unhandled error:", error);
+      return send(res, 500, { error: "internal error; see the server log" });
     });
   });
 }
 
 function requireStore(store: Store | undefined): Store {
-  if (!store) throw new Error("DATABASE_URL is not set");
+  if (!store) throw new ApiError(500, "DATABASE_URL is not set on the server");
   return store;
 }
+
+/** Every API route and its allowed methods: exact paths and id-carrying
+ *  prefixes. The dispatch chain below matches path+method together; this table
+ *  exists so a known path with the wrong verb answers 405 with Allow instead
+ *  of pretending the route does not exist. */
+const API_ROUTES: { path: string; exact: boolean; methods: string[] }[] = [
+  { path: "/api/state", exact: true, methods: ["GET"] },
+  { path: "/api/metrics", exact: true, methods: ["GET"] },
+  { path: "/api/runs", exact: true, methods: ["GET"] },
+  { path: "/api/connectors", exact: true, methods: ["GET", "POST"] },
+  { path: "/api/goals", exact: true, methods: ["GET", "POST"] },
+  { path: "/api/catches", exact: true, methods: ["GET"] },
+  { path: "/api/catches/metrics", exact: true, methods: ["GET"] },
+  { path: "/api/ingest", exact: true, methods: ["POST"] },
+  { path: "/api/answer", exact: true, methods: ["POST"] },
+  { path: "/api/answer-batch", exact: true, methods: ["POST"] },
+  { path: "/api/trace/", exact: false, methods: ["GET"] },
+  { path: "/api/runs/", exact: false, methods: ["GET"] },
+  { path: "/api/catches/", exact: false, methods: ["POST"] },
+  { path: "/api/connectors/", exact: false, methods: ["POST"] },
+];
 
 async function handle(
   core: Marrow,
@@ -403,7 +453,21 @@ async function handle(
   resolved: Resolved,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  const path = url.pathname;
+  // a trailing slash on an API route is the same route: /api/state/ works.
+  let path = url.pathname;
+  if (path.startsWith("/api/") && path.length > 5 && path.endsWith("/")) {
+    path = path.slice(0, -1);
+  }
+
+  // HEAD answers exactly like GET with the body suppressed, so health checks
+  // and monitors that probe with HEAD read the endpoint as up.
+  if (req.method === "HEAD") {
+    req.method = "GET";
+    const realEnd = res.end.bind(res);
+    res.write = () => true;
+    // node's end() overloads collapse to "drop any body, keep the status".
+    res.end = (() => realEnd()) as typeof res.end;
+  }
 
   if (path === "/api/state" && req.method === "GET") {
     return send(res, 200, await getState(core));
@@ -650,7 +714,19 @@ async function handle(
     return send(res, 200, goal);
   }
 
+  // Anything still here under /api/ is either a known route with the wrong
+  // verb (405 with Allow says which verbs exist) or genuinely unknown (404).
   if (path.startsWith("/api/")) {
+    const route = API_ROUTES.find((r) =>
+      r.exact ? r.path === path : path.startsWith(r.path) && path.length > r.path.length,
+    );
+    if (route && !route.methods.includes(req.method ?? "")) {
+      throw new ApiError(
+        405,
+        `method ${req.method} is not allowed here; use ${route.methods.join(" or ")}`,
+        route.methods,
+      );
+    }
     return send(res, 404, { error: "not found" });
   }
 
