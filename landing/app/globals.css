@@ -2151,7 +2151,19 @@ html:not(.js) .waitlist .waitlist-row .btn-promote {
   .slice-grid,
   .oss-grid,
   .cloud-band {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not 1fr: a grid item's default min-width is its
+       min-content, so one long mono line in the terminal card would force
+       the single column past the viewport and the whole page would scroll
+       sideways on a phone. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cover-grid > *,
+  .room-grid > *,
+  .promote-grid > *,
+  .slice-grid > *,
+  .oss-grid > *,
+  .cloud-band > * {
+    min-width: 0;
   }
   .cover {
     padding-top: 44px;
