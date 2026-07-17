@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#08090b" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4efe4" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta
+      name="description"
+      content="Marrow distills the product room into decided-versus-open truth with provenance, served task-scoped to coding agents."
+    />
+    <title>Marrow · the room, distilled</title>
+    <script>window.__MARROW_DEMO__=true;</script>
+    <script>
+      // resolve the theme before first paint so there is no flash. mirrors
+      // resolveInitialTheme in ui.ts: an explicit prior choice wins, else the OS.
+      (function () {
+        try {
+          var stored = localStorage.getItem("marrow-theme");
+          var prefersDark =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme =
+            stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
+          document.documentElement.dataset.theme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", theme === "light" ? "#f4efe4" : "#08090b");
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DJ0d4z-T.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-2qvlasXK.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

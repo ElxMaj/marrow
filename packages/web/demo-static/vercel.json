@@ -1,0 +1,62 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "rewrites": [
+    {
+      "source": "/api/state",
+      "destination": "/api/state.json"
+    },
+    {
+      "source": "/api/trace/:id",
+      "destination": "/api/trace/:id.json"
+    },
+    {
+      "source": "/api/metrics",
+      "destination": "/api/metrics.json"
+    },
+    {
+      "source": "/api/runs",
+      "destination": "/api/runs.json"
+    },
+    {
+      "source": "/api/connectors",
+      "destination": "/api/connectors.json"
+    },
+    {
+      "source": "/api/goals",
+      "destination": "/api/goals.json"
+    },
+    {
+      "source": "/api/catches/metrics",
+      "destination": "/api/catches/metrics.json"
+    },
+    {
+      "source": "/api/catches",
+      "destination": "/api/catches.json"
+    },
+    {
+      "source": "/api/evidence/recent",
+      "destination": "/api/evidence/recent.json"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
+}
