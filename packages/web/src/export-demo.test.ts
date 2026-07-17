@@ -33,6 +33,7 @@ describe("export-demo static snapshot", () => {
       getDecisions: async () => [{ id: "dec_1", title: "Magic links only" }],
       listEntities: async () => [{ id: "ent_1", name: "Auth" }],
       getOpenQuestions: async () => [{ id: "q_1", prompt: "Confirm auth" }],
+      getGraph: async () => ({ nodes: [{ id: "dec_1" }], edges: [] }),
       traceToSource: async (id: string) => ({
         id,
         spans: [{ evidenceId: "ev_1", start: 0, end: 4 }],
@@ -73,8 +74,12 @@ describe("export-demo static snapshot", () => {
       decisions: unknown[];
       entities: unknown[];
       questions: unknown[];
+      graph: { nodes: unknown[]; edges: unknown[] };
     };
     expect(state.readOnly).toBe(true);
+    // the living map's data must ride in the snapshot: an absent graph made
+    // the hosted demo's Graph view claim the brain was empty.
+    expect(state.graph.nodes.length).toBeGreaterThan(0);
     expect(state.decisions).toHaveLength(1);
     expect(state.entities).toHaveLength(1);
     expect(state.questions).toHaveLength(1);
@@ -119,6 +124,7 @@ describe("export-demo static snapshot", () => {
           getDecisions: async () => [],
           listEntities: async () => [],
           getOpenQuestions: async () => [],
+          getGraph: async () => ({ nodes: [], edges: [] }),
           traceToSource: async () => ({}),
         },
         clientDir: join(root, "missing-client"),

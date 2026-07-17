@@ -35,6 +35,9 @@ export interface StaticDemoCore {
   getDecisions(): Promise<StaticDemoNode[]>;
   listEntities(): Promise<StaticDemoNode[]>;
   getOpenQuestions(): Promise<StaticDemoNode[]>;
+  /** The node-link graph the living map renders. Without it in the snapshot
+   *  the demo's Graph view says the brain is empty while nodes exist. */
+  getGraph(): Promise<unknown>;
   traceToSource(nodeId: string): Promise<unknown>;
 }
 
@@ -118,14 +121,18 @@ export async function exportStaticDemo({
     );
   }
 
-  const [decisions, entities, questions] = await Promise.all([
+  // The same fields the live server's getState answers with, including the
+  // graph the living map renders (an empty graph made the demo's map claim
+  // the brain was empty). The hosted snapshot is read only by construction:
+  // there is no server to accept a write; the flag tells the UI to answer in
+  // the sandbox.
+  const [decisions, entities, questions, graph] = await Promise.all([
     core.getDecisions(),
     core.listEntities(),
     core.getOpenQuestions(),
+    core.getGraph(),
   ]);
-  // The hosted snapshot is read only by construction: there is no server to
-  // accept a write. The flag tells the UI to answer in the sandbox.
-  const state = { decisions, entities, questions, readOnly: true };
+  const state = { decisions, entities, questions, graph, readOnly: true };
 
   // wipe the snapshot but keep .vercel/: it holds the project link the deploy
   // command needs, and losing it silently deploys to a fresh project.
