@@ -1,0 +1,73 @@
+name: Reseed the hosted demo
+
+# The hosted demo is a static snapshot: without a refresh it visibly ages
+# ("seeded 2 months ago"). This re-seeds a fresh brain with the spread
+# timeline, re-exports demo-static, and opens a PR with the new snapshot.
+# Deploying the merged snapshot to the marrow-demo Vercel project stays a
+# founder act, exactly like every other deploy.
+on:
+  schedule:
+    - cron: "17 6 1 * *" # the 1st of each month, 06:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  reseed:
+    # never run on forks: the snapshot and the PR belong to the canonical repo.
+    if: github.repository == 'ElxMaj/marrow'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marrow
+          POSTGRES_PASSWORD: marrow
+          POSTGRES_DB: marrow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marrow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://marrow:marrow@localhost:5432/marrow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @marrowhq/web build
+      - name: Seed the demo brain (spread timeline)
+        run: npx tsx packages/web/scripts/seed-demo.ts
+      - name: Export the static snapshot
+        run: npx tsx packages/web/scripts/export-demo.ts
+      - name: Open the refresh PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- packages/web/demo-static; then
+            echo "snapshot unchanged, nothing to refresh"
+            exit 0
+          fi
+          branch="chore/reseed-demo-$(date -u +%Y-%m)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add packages/web/demo-static
+          git commit -m "chore(web): monthly demo snapshot refresh
+
+          Re-seeded and re-exported so the hosted demo's seeded-N-days-ago
+          line stays honest and its timeline stays recent. Deploying the
+          merged snapshot remains a founder act."
+          git push -u origin "$branch" --force
+          gh pr create \
+            --title "chore(web): monthly demo snapshot refresh" \
+            --body "Automated monthly re-seed + re-export of packages/web/demo-static so the hosted demo stays fresh. Review the diff, merge on green; deploying to the marrow-demo Vercel project stays a founder act." \
+            || echo "PR already open for $branch"

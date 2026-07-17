@@ -5,6 +5,7 @@ import {
   parseRoute,
   resolveInitialTheme,
   ROUTES,
+  timeAgo,
   type Route,
   type SandboxState,
   type Theme,
@@ -149,8 +150,9 @@ export function App(): JSX.Element {
         {state.readOnly && (
           <div className="banner readonly" role="note">
             <p>
-              A seeded brain, read only. Answers run in a sandbox and nothing is saved: promote
-              something and watch it settle. Run it locally to write: <code>pnpm marrow web</code>
+              A seeded brain{state.seededAt ? ` (seeded ${timeAgo(state.seededAt)})` : ""}, read
+              only. Answers run in a sandbox and nothing is saved: promote something and watch it
+              settle. Run it locally to write: <code>pnpm marrow web</code>
             </p>
           </div>
         )}
