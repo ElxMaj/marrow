@@ -52,6 +52,24 @@ export function catchDismissRateTone(dismissRate: number): "warn" | undefined {
   return dismissRate > 0.2 ? "warn" : undefined;
 }
 
+/** Metric tones gated on real activity. Precision and dismiss rate are ratios
+ *  over resolved catches; before anything has been acted on or dismissed they
+ *  are no-data, and a red 0% would read as failure instead of "nothing yet". */
+export function catchMetricsTones(metrics: CatchMetricsView | null): {
+  precision?: "warn";
+  dismissRate?: "warn";
+} {
+  if (!metrics) return {};
+  const resolved = metrics.actedOn + metrics.dismissed;
+  if (resolved === 0) return {};
+  const tones: { precision?: "warn"; dismissRate?: "warn" } = {};
+  const precision = catchPrecisionTone(metrics.precision);
+  if (precision) tones.precision = precision;
+  const dismissRate = catchDismissRateTone(metrics.dismissRate);
+  if (dismissRate) tones.dismissRate = dismissRate;
+  return tones;
+}
+
 /**
  * The Catches view: drift detection receipts. Each row shows code that
  * contradicts a decided fact, with the offending hunk, the violated decision,
@@ -146,8 +164,9 @@ export function CatchesView({ readOnly }: { readOnly: boolean }): JSX.Element {
   // The actions column shows whenever a visible catch is actionable, not only in
   // the "open" tab — an open catch in the "all" tab must still offer its actions.
   const hasActionable = catchesShowActionColumn(filtered);
-  const precisionTone = metrics ? catchPrecisionTone(metrics.precision) : undefined;
-  const dismissRateTone = metrics ? catchDismissRateTone(metrics.dismissRate) : undefined;
+  const metricTones = catchMetricsTones(metrics);
+  const precisionTone = metricTones.precision;
+  const dismissRateTone = metricTones.dismissRate;
 
   return (
     <div className="view view-catches">

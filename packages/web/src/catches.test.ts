@@ -5,6 +5,7 @@ import {
   catchActionPrompt,
   catchDismissRateTone,
   catchMetricPercent,
+  catchMetricsTones,
   catchPrecisionTone,
   catchesForFilter,
   catchesShowActionColumn,
@@ -78,5 +79,21 @@ describe("Catches view presentation rules", () => {
     expect(catchPrecisionTone(0.8)).toBeUndefined();
     expect(catchDismissRateTone(0.21)).toBe("warn");
     expect(catchDismissRateTone(0.2)).toBeUndefined();
+  });
+
+  it("stays neutral until a catch has actually been resolved", () => {
+    // With nothing acted on or dismissed, precision 0% is no-data, not failure:
+    // a red 0% before the first resolution would read as the product failing.
+    expect(
+      catchMetricsTones({ surfaced: 1, actedOn: 0, dismissed: 0, precision: 0, dismissRate: 0 }),
+    ).toEqual({});
+    expect(catchMetricsTones(null)).toEqual({});
+    // Once one catch is resolved the ratio thresholds apply as before.
+    expect(
+      catchMetricsTones({ surfaced: 2, actedOn: 0, dismissed: 1, precision: 0, dismissRate: 0.5 }),
+    ).toEqual({ precision: "warn", dismissRate: "warn" });
+    expect(
+      catchMetricsTones({ surfaced: 1, actedOn: 1, dismissed: 0, precision: 1, dismissRate: 0 }),
+    ).toEqual({});
   });
 });

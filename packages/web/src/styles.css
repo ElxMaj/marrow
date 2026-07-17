@@ -239,30 +239,14 @@ body {
   align-self: flex-end;
   padding-bottom: 3px;
 }
-/* the mark: a stylised marrow cross-section — gold core, bone ring, gold body,
-   deep rim. flat, drawn in one radial gradient. a faint warmth in dark only. */
+/* the mark: one solid marrow-gold dot, the same dot the landing wordmark uses.
+   at this size a gradient or bloom reads as a fuzzy target, so it stays flat. */
 .mark {
-  width: 18px;
-  height: 18px;
+  width: 10px;
+  height: 10px;
   flex: none;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 50% 46%,
-    var(--gold-300) 0 20%,
-    var(--paper) 20% 33%,
-    var(--gold-500) 33% 66%,
-    var(--gold-700) 66% 100%
-  );
-  box-shadow: 0 0 0 1px var(--gold-border);
-}
-/* the mark is the ONE deliberate exception to the no-glow depth law: it is the
-   lit marrow spark, so in dark it carries a faint warm bloom. nothing else in
-   the system glows. light paper needs no bloom, so it gets none. */
-:root .mark {
-  filter: drop-shadow(0 0 8px rgba(216, 166, 87, 0.18));
-}
-[data-theme="light"] .mark {
-  filter: none;
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .controls {
@@ -1214,7 +1198,10 @@ h2 {
 
 /* read-only demo notice: a quiet gold note, not an alarm */
 .banner.readonly {
-  margin-top: var(--sp-5);
+  /* the banner opens the page: no top offset (the layout's own padding sets
+     the band), and a full beat below so it reads as its own strip, not a
+     label glued to the view title. */
+  margin: 0 0 var(--sp-6);
   padding: var(--sp-3) var(--sp-5);
   background: var(--gold-wash);
   border: 1px solid var(--gold-border);
@@ -1714,11 +1701,14 @@ h2 {
   border-radius: 0 2px 2px 0;
   background: var(--accent);
 }
+/* big metrics are sans lining figures: the mono face's slashed zero reads as
+   the empty-set glyph at hero size. mono stays the evidence voice (ids, spans). */
 .stat-num {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 30px;
-  font-weight: var(--fw-label);
-  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
   line-height: 1.1;
   color: var(--ink);
 }
@@ -1838,9 +1828,10 @@ h2 {
   gap: 2px;
 }
 .week-value {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 22px;
-  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--ink);
 }
 .week-label {
@@ -1918,7 +1909,19 @@ h2 {
 .graph-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* every row shares the height of its tallest card, and each card stretches
+     to fill its cell, so footers sit on one baseline across the row. */
+  grid-auto-rows: 1fr;
   gap: var(--sp-3);
+}
+.graph-grid > li {
+  display: flex;
+}
+.graph-grid > li > .node {
+  flex: 1;
+}
+.graph-grid .node-meta {
+  margin-top: auto;
 }
 
 /* ================================================================
@@ -1961,9 +1964,10 @@ h2 {
   background: var(--accent);
 }
 .metric-value {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 19px;
-  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--ink);
 }
 .metric.warn .metric-value {
