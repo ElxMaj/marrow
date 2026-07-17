@@ -199,11 +199,11 @@ const DISTILL_SOURCES = [
   "github/acme/app#412",
 ];
 const SEARCH_QUERIES = [
-  "soft delete retention policy",
-  "dashboard session timeout",
+  "trial length policy",
+  "card wall drift",
   "offline editor sync",
   "overage billing cap or charge",
-  "magic link auth",
+  "free trial scope",
   "presence dots in the editor",
   "per workspace pricing",
   "payment dunning backoff",
@@ -246,20 +246,21 @@ async function seedConnectors(store: Store, pool: pg.Pool): Promise<void> {
 
 async function seedCatches(core: Marrow): Promise<void> {
   // synthetic hunks that contradict the decided facts from widenTheRoom:
-  // - auth decision: "auth uses magic links, no passwords"
+  // - trial decision: "free trial, no card upfront"
   // - pricing decision: "pricing is per workspace, flat, no per-seat metering"
   // - offline decision: "the editor works offline and syncs when the connection returns"
   const HUNKS: DiffHunk[] = [
     syntheticHunk({
-      path: "src/auth/password.ts",
+      path: "src/signup/card-wall.ts",
       lineStart: 12,
       lineEnd: 18,
-      newLines: `export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
+      newLines: `// block the trial until a card is on file
+export async function requireCardAtSignup(customerId: string): Promise<SetupIntent> {
+  return stripe.setupIntents.create({ customer: customerId, usage: "off_session" });
 }
 
-export async function verifyPassword(hash: string, password: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+export function trialStartsAfterCard(): boolean {
+  return true;
 }`,
     }),
     syntheticHunk({
@@ -330,7 +331,7 @@ export function checkSessionExpiry(lastActive: number): boolean {
 
     await core.acceptCatch(
       toAccept.id,
-      "fixed: removed the password hashing and switched to magic link auth flow",
+      "fixed: removed the card wall, the trial starts without a card again",
     );
     console.log(`  accepted catch ${toAccept.id}`);
 

@@ -180,7 +180,7 @@ test("hero source path points evaluators at the full setup instead of a half-com
       <span class="cmd-text">pnpm marrow demo</span>
     </button>
   </section>`;
-  const newHero = `<section class="cover">
+  const newHero = `<section class="cover" id="cover">
     <a class="btn btn-primary" href="#start">Run from source</a>
   </section>`;
 
@@ -198,17 +198,24 @@ test("demo docs describe the current bundled hero slice", () => {
     demoDoc:
       "pnpm demo ingests packages/core/fixtures/demo/pfc-gdynia.md and prints magic links, no shared passwords",
   };
-  const currentDocs = {
+  const supersededDocs = {
     readme: "demo shows the soft-delete decision decided with provenance",
     demoDoc:
       "pnpm demo ingests packages/core/fixtures/demo/design-partner.md and prints soft delete, 30 days, then purge",
   };
+  const currentDocs = {
+    readme: "demo shows the free-trial decision decided with provenance",
+    demoDoc:
+      "pnpm demo ingests packages/core/fixtures/demo/design-partner.md and prints free trial, no card until they convert",
+  };
 
   assert.equal(evaluateDemoDocsTruth(staleDocs).ok, false);
-  assert.match(evaluateDemoDocsTruth(staleDocs).detail, /stale magic-link demo copy/);
+  assert.match(evaluateDemoDocsTruth(staleDocs).detail, /stale demo copy/);
+  assert.equal(evaluateDemoDocsTruth(supersededDocs).ok, false);
+  assert.match(evaluateDemoDocsTruth(supersededDocs).detail, /soft-delete/);
   assert.deepEqual(evaluateDemoDocsTruth(currentDocs), {
     ok: true,
-    detail: "demo docs match the bundled soft-delete slice",
+    detail: "demo docs match the bundled free-trial slice",
   });
 });
 

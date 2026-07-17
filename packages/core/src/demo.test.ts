@@ -42,7 +42,7 @@ beforeEach(async () => {
 });
 
 describe("hero demo", () => {
-  it("ends with the soft-delete decision decided, provenance to the interview", async () => {
+  it("ends with the launch-trial decision decided, provenance to the interview", async () => {
     const result = await runDemo(freshCore(), interview);
     expect(result.decision.status).toBe("decided");
     expect(result.decision.confidence.source).toBe("human");
@@ -54,17 +54,17 @@ describe("hero demo", () => {
   it("trace_to_source returns the exact interview line", async () => {
     const result = await runDemo(freshCore(), interview);
     const span = result.trace.spans.find((s) => s.source.includes("design-partner"));
-    expect(span?.spanText).toContain("Soft delete");
+    expect(span?.spanText).toContain("Free trial");
   });
 
-  it("the agent's question gets a decided, sourced answer; backup retention stays open", async () => {
+  it("the agent's question gets a decided, sourced answer; annual billing stays open", async () => {
     const result = await runDemo(freshCore(), interview);
     expect(result.answer.length).toBeGreaterThan(0);
     expect(
       result.answer.some(
-        (n) => n.kind === "decision" && n.status === "decided" && /soft delete/i.test(n.title),
+        (n) => n.kind === "decision" && n.status === "decided" && /free trial/i.test(n.title),
       ),
     ).toBe(true);
-    expect(result.openQuestions.some((q) => /backup retention/i.test(q.prompt))).toBe(true);
+    expect(result.openQuestions.some((q) => /annual billing/i.test(q.prompt))).toBe(true);
   });
 });

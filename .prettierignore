@@ -20,5 +20,12 @@ benchmark/
 # generated static demo snapshot
 packages/web/demo-static/
 
+# landing build output (the source in landing/app etc. IS formatted)
+landing/.next/
+landing/out/
+landing/next-env.d.ts
+landing/test-results/
+landing/playwright-report/
+
 # browser research snapshots
 .playwright-mcp/

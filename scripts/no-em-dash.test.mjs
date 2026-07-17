@@ -15,7 +15,16 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EM_DASH = "—";
 
 async function targetFiles() {
-  const files = ["README.md", "landing/index.html"];
+  // The landing is a Next.js app: scan its source copy (app/, components/,
+  // content/), not a build artifact.
+  const files = ["README.md"];
+  for (const dir of ["landing/app", "landing/components", "landing/content"]) {
+    for (const file of await readdir(join(root, dir), { recursive: true })) {
+      if (/\.(ts|tsx|css|md)$/.test(file) && !file.includes(".test.")) {
+        files.push(join(dir, file));
+      }
+    }
+  }
   for (const pkg of await readdir(join(root, "packages"))) {
     const changelog = join("packages", pkg, "CHANGELOG.md");
     try {

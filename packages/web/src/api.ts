@@ -184,6 +184,86 @@ export function isReadOnly(): boolean {
   return process.env.MARROW_READ_ONLY === "1";
 }
 
+/** One catch row for the Catches view, shaped server-side from events plus
+ *  status. Shared by the /api/catches handler and the static demo export so the
+ *  two never drift. */
+export interface CatchListItem {
+  id: string;
+  status: CatchView["status"];
+  decisionId: string;
+  decisionTitle: string;
+  decisionSourceLabel: string;
+  path: string | undefined;
+  lineStart: number | undefined;
+  lineEnd: number | undefined;
+  hunkText: string;
+  verdict: "warn" | "contradiction";
+  confidence: number;
+  modelUsed: string | undefined;
+  surfacedAt: string;
+  trigger: string;
+}
+
+export async function getCatches(store: Store): Promise<CatchListItem[]> {
+  const events = await store.listCatchEvents({ eventType: "catch_surfaced" });
+  const views: CatchListItem[] = [];
+  for (const event of events) {
+    if (!event.question_id || !event.decision_id) continue;
+    const question = await store.getQuestion(event.question_id);
+    const decision = await store.getNode(event.decision_id);
+    if (!question || !decision || decision.kind !== "decision") continue;
+
+    // derive status from question state. A catch answered through the normal
+    // Questions loop is resolved as superseded, but it is no longer
+    // actionable; treat it the same as an accepted catch.
+    let status: CatchView["status"] = "open";
+    if (question.status === "decided" || question.status === "superseded") status = "acted-on";
+    else if (question.status === "dismissed") status = "dismissed";
+
+    const sourceLabel = `${decision.provenance.length} evidence span${
+      decision.provenance.length === 1 ? "" : "s"
+    }`;
+
+    views.push({
+      id: question.id,
+      status,
+      decisionId: decision.id,
+      decisionTitle: decision.title,
+      decisionSourceLabel: sourceLabel,
+      path: event.diff_span?.path,
+      lineStart: event.diff_span?.lineStart,
+      lineEnd: event.diff_span?.lineEnd,
+      hunkText: event.diff_span?.hunkText ?? "",
+      verdict: (event.confidence ?? 0) >= 0.65 ? "contradiction" : "warn",
+      confidence: event.confidence ?? 0,
+      modelUsed: event.model_used ?? undefined,
+      surfacedAt: event.created_at,
+      trigger: event.trigger,
+    });
+  }
+  views.sort((a, b) => b.surfacedAt.localeCompare(a.surfacedAt));
+  return views;
+}
+
+/** Catch precision + dismiss-rate for the Catches header. Excludes synthetic
+ *  events so the demo never reports padded numbers. */
+export async function getCatchMetricsView(store: Store): Promise<{
+  surfaced: number;
+  actedOn: number;
+  dismissed: number;
+  precision: number;
+  dismissRate: number;
+}> {
+  const metrics = await store.getCatchMetrics({ excludeSynthetic: true });
+  return {
+    surfaced: metrics.surfaced,
+    actedOn: metrics.actedOn,
+    dismissed: metrics.dismissed,
+    precision: metrics.precision ?? 0,
+    dismissRate: metrics.dismissRate ?? 0,
+  };
+}
+
 /** Read goals for the Goals space. A thin window: lists through the Store (like
  *  catches and runs) and resolves each goal's served-entity name for display. It
  *  never writes and never distills. */
@@ -496,72 +576,11 @@ async function handle(
   // --- catches: drift detection receipts ------------------------------------
   if (path === "/api/catches" && req.method === "GET") {
     const store = requireStore(resolved.store);
-    const events = await store.listCatchEvents({ eventType: "catch_surfaced" });
-    const views: {
-      id: string;
-      status: CatchView["status"];
-      decisionId: string;
-      decisionTitle: string;
-      decisionSourceLabel: string;
-      path: string | undefined;
-      lineStart: number | undefined;
-      lineEnd: number | undefined;
-      hunkText: string;
-      verdict: "warn" | "contradiction";
-      confidence: number;
-      modelUsed: string | undefined;
-      surfacedAt: string;
-      trigger: string;
-    }[] = [];
-    for (const event of events) {
-      if (!event.question_id || !event.decision_id) continue;
-      const question = await store.getQuestion(event.question_id);
-      const decision = await store.getNode(event.decision_id);
-      if (!question || !decision || decision.kind !== "decision") continue;
-
-      // derive status from question state. A catch answered through the normal
-      // Questions loop is resolved as superseded, but it is no longer
-      // actionable; treat it the same as an accepted catch.
-      let status: CatchView["status"] = "open";
-      if (question.status === "decided" || question.status === "superseded") status = "acted-on";
-      else if (question.status === "dismissed") status = "dismissed";
-
-      // decision source label: count provenance spans
-      const sourceLabel = `${decision.provenance.length} evidence span${
-        decision.provenance.length === 1 ? "" : "s"
-      }`;
-
-      views.push({
-        id: question.id,
-        status,
-        decisionId: decision.id,
-        decisionTitle: decision.title,
-        decisionSourceLabel: sourceLabel,
-        path: event.diff_span?.path,
-        lineStart: event.diff_span?.lineStart,
-        lineEnd: event.diff_span?.lineEnd,
-        hunkText: event.diff_span?.hunkText ?? "",
-        verdict: (event.confidence ?? 0) >= 0.65 ? "contradiction" : "warn",
-        confidence: event.confidence ?? 0,
-        modelUsed: event.model_used ?? undefined,
-        surfacedAt: event.created_at,
-        trigger: event.trigger,
-      });
-    }
-    // sort by surfacedAt descending
-    views.sort((a, b) => b.surfacedAt.localeCompare(a.surfacedAt));
-    return send(res, 200, views);
+    return send(res, 200, await getCatches(store));
   }
   if (path === "/api/catches/metrics" && req.method === "GET") {
     const store = requireStore(resolved.store);
-    const metrics = await store.getCatchMetrics({ excludeSynthetic: true });
-    return send(res, 200, {
-      surfaced: metrics.surfaced,
-      actedOn: metrics.actedOn,
-      dismissed: metrics.dismissed,
-      precision: metrics.precision ?? 0,
-      dismissRate: metrics.dismissRate ?? 0,
-    });
+    return send(res, 200, await getCatchMetricsView(store));
   }
   if (path.startsWith("/api/catches/") && req.method === "POST") {
     if (isReadOnly()) {
