@@ -1004,6 +1004,25 @@ export class Store {
     return id;
   }
 
+  /** Counts for the demo's brain guard: how much evidence exists at all, and
+   *  how much PRIMARY room content came from somewhere other than the given
+   *  fixture source. Answer records (source answers/...) are derivative: the
+   *  loop writes one for every promote, including the demo's own, so they
+   *  never mark a brain as real on their own. Evidence is append-only, so a
+   *  fixture writing into a real brain is permanent; the caller refuses
+   *  before that happens. */
+  async evidenceCounts(excludeSource?: string): Promise<{ total: number; other: number }> {
+    const total = await this.pool.query<{ n: number }>("select count(*)::int as n from evidence");
+    const other =
+      excludeSource === undefined
+        ? total
+        : await this.pool.query<{ n: number }>(
+            "select count(*)::int as n from evidence where source <> $1 and source not like 'answers/%'",
+            [excludeSource],
+          );
+    return { total: total.rows[0]?.n ?? 0, other: other.rows[0]?.n ?? 0 };
+  }
+
   /** Search raw evidence text. used to confirm an answer was recorded verbatim. */
   async searchEvidence(query: string, limit = 20): Promise<Evidence[]> {
     const res = await this.pool.query<{
