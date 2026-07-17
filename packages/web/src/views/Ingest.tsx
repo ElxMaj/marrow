@@ -18,6 +18,12 @@ export function IngestView({ readOnly }: { readOnly: boolean }): JSX.Element {
   const [recent, setRecent] = useState<EvidenceView[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // the next step after a capture: what the user does now so the evidence
+  // becomes facts. persists (no auto-dismiss) because it is an instruction,
+  // not a transient toast.
+  const [nextStep, setNextStep] = useState<{ evidenceId: string; canDistill: boolean } | null>(
+    null,
+  );
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -63,9 +69,16 @@ export function IngestView({ readOnly }: { readOnly: boolean }): JSX.Element {
         const e = (await res.json().catch(() => ({}))) as { error?: string };
         setNote(e.error ?? "Could not capture that");
       } else {
+        const captured = (await res.json().catch(() => ({}))) as {
+          id?: string;
+          canDistill?: boolean;
+        };
         setText("");
         setSource("");
         setNote(`Captured · ${body.length.toLocaleString()} chars added as evidence`);
+        if (captured.id) {
+          setNextStep({ evidenceId: captured.id, canDistill: captured.canDistill ?? false });
+        }
         await load();
       }
     } catch {
@@ -167,6 +180,25 @@ export function IngestView({ readOnly }: { readOnly: boolean }): JSX.Element {
           {note && (
             <div className="inline-note live" role="status">
               {note}
+            </div>
+          )}
+
+          {nextStep && (
+            <div className="next-step" role="note">
+              <span className="next-step-label">Next step</span>
+              {nextStep.canDistill ? (
+                <p>
+                  Distill it into decisions, entities and questions:{" "}
+                  <code>marrow distill {nextStep.evidenceId}</code>
+                </p>
+              ) : (
+                <p>
+                  Evidence is stored. To turn it into facts, set a model key (
+                  <code>MARROW_API_KEY</code> for Claude or <code>MARROW_PROVIDER</code> for a local
+                  LLM), then <code>marrow distill {nextStep.evidenceId}</code>. Search stays
+                  semantic without a key; distillation needs one.
+                </p>
+              )}
             </div>
           )}
 

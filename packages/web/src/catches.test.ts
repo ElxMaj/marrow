@@ -7,6 +7,7 @@ import {
   catchMetricPercent,
   catchMetricsTones,
   catchPrecisionTone,
+  catchReceiptDirty,
   catchesForFilter,
   catchesShowActionColumn,
   type CatchFilter,
@@ -79,6 +80,15 @@ describe("Catches view presentation rules", () => {
     expect(catchPrecisionTone(0.8)).toBeUndefined();
     expect(catchDismissRateTone(0.21)).toBe("warn");
     expect(catchDismissRateTone(0.2)).toBeUndefined();
+  });
+
+  it("a receipt draft is dirty only when it holds real text", () => {
+    // the navigation guard fires on a dirty receipt: whitespace or an
+    // untouched form is safe to abandon, typed content is not.
+    expect(catchReceiptDirty(null)).toBe(false);
+    expect(catchReceiptDirty({ text: "" })).toBe(false);
+    expect(catchReceiptDirty({ text: "   " })).toBe(false);
+    expect(catchReceiptDirty({ text: "reverted the card wall" })).toBe(true);
   });
 
   it("stays neutral until a catch has actually been resolved", () => {

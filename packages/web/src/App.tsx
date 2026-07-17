@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getJSON, Ticking, ThemeToggle } from "./components";
 import {
+  hasUnsavedWork,
   parseRoute,
   resolveInitialTheme,
   ROUTES,
@@ -68,6 +69,12 @@ function useHashRoute(): [Route, (route: Route) => void] {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   const navigate = useCallback((next: Route) => {
+    // guard unsaved work BEFORE changing the hash: a view with a dirty form
+    // (an in-progress catch receipt) registers a checker; if the user cancels,
+    // the hash never changes, the view never unmounts, and the draft survives.
+    if (hasUnsavedWork() && !window.confirm("You have unsaved changes. Leave and discard them?")) {
+      return;
+    }
     window.location.hash = `/${next}`;
     // a section change starts at the top, like turning to a new page.
     window.scrollTo({ top: 0 });

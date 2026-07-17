@@ -829,5 +829,21 @@ describe("web api console endpoints", () => {
       expect(goals.length).toBeGreaterThan(0);
       expect(goals.every((g) => g.goalType === "user")).toBe(true);
     });
+
+    it("the ingest response tells the console what to do next", async () => {
+      // capture returns canDistill so the Ingest view can name the exact next
+      // command (distill now, or set a model key first) instead of leaving the
+      // user wondering why no facts appeared.
+      const res = await fetch(`${base}/api/ingest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "a standup note worth distilling", source: "standups/x.md" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id?: string; canDistill?: boolean };
+      expect(typeof body.id).toBe("string");
+      // this test core is wired with a model + embedding, so distill is ready.
+      expect(body.canDistill).toBe(true);
+    });
   });
 });

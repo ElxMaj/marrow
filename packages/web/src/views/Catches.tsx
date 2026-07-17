@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { CloseIcon, getJSON, reduceMotion } from "../components";
 import {
@@ -6,6 +6,7 @@ import {
   catchActionBody,
   catchStatusLabel,
   formatConfidence,
+  registerUnsavedGuard,
   timeAgo,
   verdictLabel,
   type CatchMetricsView,
@@ -52,6 +53,12 @@ export function catchDismissRateTone(dismissRate: number): "warn" | undefined {
   return dismissRate > 0.2 ? "warn" : undefined;
 }
 
+/** A receipt draft is dirty (worth guarding against navigation) only when it
+ *  holds non-whitespace text: an empty or untouched form is safe to abandon. */
+export function catchReceiptDirty(draft: { text: string } | null): boolean {
+  return Boolean(draft && draft.text.trim().length > 0);
+}
+
 /** Metric tones gated on real activity. Precision and dismiss rate are ratios
  *  over resolved catches; before anything has been acted on or dismissed they
  *  are no-data, and a red 0% would read as failure instead of "nothing yet". */
@@ -90,6 +97,24 @@ export function CatchesView({ readOnly }: { readOnly: boolean }): JSX.Element {
     action: CatchAction;
     text: string;
   } | null>(null);
+
+  // An in-progress receipt (typed but not saved) is a real edit: guard against
+  // losing it. The in-app router consults the registry BEFORE navigating, so a
+  // cancelled leave keeps this view mounted and the draft intact; beforeunload
+  // covers the external cases the router cannot see (tab close, refresh).
+  const dirty = catchReceiptDirty(actionDraft);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useEffect(() => registerUnsavedGuard(() => dirtyRef.current), []);
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [dirty]);
 
   const load = useCallback(async () => {
     try {
