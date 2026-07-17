@@ -12,7 +12,7 @@ Marrow is the product-context layer for coding agents: it records the product ro
 
 ## Design language
 
-The visual identity is the black room: cold near-black shell, bone ink, marrow-gold as the single light source, Archivo for decided truth, Geist for UI, Geist Mono for evidence. Before touching `packages/web` or `landing/`, read `docs/design-language.md` and hold to it: tokens over hex, gold is action never status, hairlines over shadows, the promote beat owns the one spring. UI work is not done until it is verified in a real browser in both console themes with reduced motion checked.
+The visual identity is the black room: cold near-black shell, bone ink, marrow-gold as the single light source, Archivo for decided truth, Geist for UI, Geist Mono for evidence. Before touching `packages/web` or `landing/`, read `docs/design-language.md` and hold to it: tokens over hex, gold is action never status, hairlines over shadows, the promote beat owns the one spring. The design language ends with a slop audit, a numbered checklist every UI change passes so the surfaces read made, not generated: no card sprawl, no decorative gradient, no shadow-for-depth, hierarchy from size and ink not bold, one accent, opinionated copy with no hype words. Run it. UI work is not done until it passes that audit and is verified in a real browser in both console themes with reduced motion checked.
 
 ## Verification
 
