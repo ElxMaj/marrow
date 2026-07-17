@@ -106,19 +106,35 @@ That saving is measured, not projected, and there are two honest numbers, report
 
 ## Try it in 60 seconds
 
+The only thing you provide is Postgres. `pnpm db:up` starts one in Docker; or point `DATABASE_URL` at any Postgres with pgvector.
+
+```bash
+# 0. a Postgres with pgvector (skip if you already have one)
+docker run -d --name marrow-pg -p 5432:5432 \
+  -e POSTGRES_USER=marrow -e POSTGRES_PASSWORD=marrow -e POSTGRES_DB=marrow \
+  pgvector/pgvector:pg16
+export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow
+
+# 1. the hero slice end to end, no API key (sets up its own schema)
+npx @marrowhq/cli demo
+
+# 2. open the console in your browser
+npx @marrowhq/cli migrate   # schema for everything other than demo
+npx @marrowhq/cli web
+```
+
+`demo` ingests an interview, distills it, answers the loop, and shows the free-trial decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. See [docs/console.md](./docs/console.md).
+
+Prefer to work from source? Clone and use the workspace scripts instead:
+
 ```bash
 git clone https://github.com/ElxMaj/marrow && cd marrow
 pnpm install
-pnpm db:up
-pnpm db:migrate
-export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow   # any Postgres+pgvector
-pnpm marrow demo     # the hero slice end to end, no API key
-pnpm marrow web      # open the console in your browser
+pnpm db:up && pnpm db:migrate
+export DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow
+pnpm marrow demo
+pnpm marrow web
 ```
-
-`demo` ingests an interview, distills it, answers the loop, and shows the free-trial decision decided with provenance back to the exact line, using a scripted model and a local in-process embedding, so it needs no keys. `web` opens the console: browse the brain, settle open questions, watch the connectors flow in, and read cost and latency. The only thing you provide is Postgres. See [docs/console.md](./docs/console.md).
-
-`demo` sets up its own schema, so the `pnpm db:migrate` step above is only needed for `web` and the other commands. The same commands work from npm as `npx @marrowhq/cli demo` and `npx @marrowhq/cli web`, with `npx @marrowhq/cli migrate` to set up the schema for anything other than `demo`. One honest warning until the queued 0.5.0 release is cut: npm's current 0.4.1 is a stale build from before this repo's history was reset (no `doctor`, no error remedies), so the clone path above is the better first run today.
 
 Run `marrow doctor` (or `pnpm marrow doctor`) any time to check the whole stack at a glance: DATABASE_URL, Postgres reachability, schema, and whether a model is configured for distillation. Each failing check prints what to run next.
 
@@ -170,18 +186,18 @@ See [docs/observability.md](./docs/observability.md).
 
 ## Connect to Claude Code or Codex
 
-Marrow serves task-scoped context to your coding agent over MCP. Point Claude Code at the MCP server package:
+Marrow serves task-scoped context to your coding agent over MCP. Point Claude Code at the published server:
 
 ```bash
 claude mcp add marrow \
   -e DATABASE_URL=postgres://marrow:marrow@localhost:5432/marrow \
   -e MARROW_API_KEY=sk-ant-... \
-  -- pnpm --dir /ABSOLUTE/PATH/TO/marrow exec tsx packages/mcp-server/src/main.ts
+  -- npx -y @marrowhq/mcp-server
 ```
 
-After `@marrowhq/mcp-server` latest matches this repo, replace the final command with `-- npx -y @marrowhq/mcp-server`.
+Works with Claude Code, Cursor, Codex, or any MCP host: use the same command and env as an `mcpServers` entry. Contributing to the server itself? Run it from source instead: `-- pnpm --dir /ABSOLUTE/PATH/TO/marrow exec tsx packages/mcp-server/src/main.ts`.
 
-Embeddings are zero-config (a local model runs in-process), so no embedding endpoint is required; set `MARROW_EMBEDDING_BASE_URL` only if you want to use your own. For Codex or any other MCP host, use the same command and env as an `mcpServers` entry.
+Embeddings are zero-config (a local model runs in-process), so no embedding endpoint is required; set `MARROW_EMBEDDING_BASE_URL` only if you want to use your own.
 
 The agent then starts with `prepare_task` for its task brief and can call `maintain_truth` when a human wants the source of truth health. It still has `search`, `get_decisions`, `get_goals`, `get_open_questions`, `get_entity` and `trace_to_source` (reads, each with status and provenance), plus `append_evidence`, `propose_node`, and `check_drift` (shaped writes). `check_drift` scans the working repo against the room's decided facts and flags code that contradicts one as an open question, the code-time guardrail, so the agent does not build something the room decided against. It can never promote a node to decided; only a human answer does.
 
