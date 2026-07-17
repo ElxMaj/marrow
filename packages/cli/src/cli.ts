@@ -24,6 +24,9 @@ import { colorStatus, dim } from "./color.js";
 import { watchFolder } from "./watch.js";
 
 const STATUSES: readonly Status[] = ["open", "decided", "contested", "superseded", "retracted"];
+// the run kinds the observability table records; `runs --kind` validates against
+// these so a typo names the valid set instead of silently returning nothing.
+const RUN_KINDS: readonly RunKind[] = ["distill", "search", "drift", "connector_sync", "ingest"];
 const isStatus = (value: string): value is Status => STATUSES.some((s) => s === value);
 
 const flagValue = (args: string[], name: string): string | undefined => {
@@ -230,6 +233,7 @@ Read the room (task-scoped; every result carries status + provenance):
   trace <nodeId>              The exact source span(s) a fact came from
   neighbors <id> [--hops N]   Nodes linked to this one in the knowledge graph
   map [--limit N]             The front door: every node, most connected first
+  graph [<id>] [--depth N]    The knowledge graph: the map with no id, or a walk from one node
 
 Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   ingest <path> [--source S]  Ingest a file, a whole folder, or stdin (distills by default)
@@ -279,6 +283,7 @@ Connectors and automatic data flow (evidence is append only, only ever inserted)
 
 Observability (every distill, search, drift and sync is recorded):
   runs [--kind K] [--status ok|error] [--limit N]   Recent pipeline runs
+                              K: distill, search, drift, connector_sync, ingest
   observe [--since ISO] [--until ISO]   Cost, latency, tokens, errors, by kind
 
 Serve a coding agent over MCP (the CLI and MCP server are equals):
@@ -287,18 +292,64 @@ Serve a coding agent over MCP (the CLI and MCP server are equals):
 Global flags:
   --json                      Print raw JSON instead of formatted text
   --no-distill                Ingest only, do not distill
-  -h, --help                  Show this help
+  -h, --help                  Show this help (or \`marrow <command> --help\` for one command)
   -v, --version               Show the version
+
+Environment:
+  DATABASE_URL                Postgres with pgvector (required for everything but help)
+  MARROW_API_KEY              Claude key for distillation (or MARROW_PROVIDER for a local LLM)
+  MARROW_SECRET_KEY           encrypts connector secrets before they touch the database
+  MARROW_EMBEDDING_BASE_URL   your own embedding endpoint instead of the in-process model
 
 Examples:
   marrow demo
   marrow ingest ./meetings --source standups
   cat zoom-call.vtt | marrow ingest -
-  marrow answer q_123 --text "soft delete, 30 day window, then purge"
+  marrow answer q_123 --text "free trial, no card until they convert"
 
 Embeddings are zero-config (a local model runs in-process); distillation needs a
 model (set MARROW_API_KEY for Claude, or MARROW_PROVIDER for a local LLM). Reads
 and ingestion work without a model.`;
+
+/** Curated examples for the commands where seeing one is worth more than the
+ *  usage line. Commands not listed still get per-command help (their HELP
+ *  line), just without an examples block. */
+const COMMAND_EXAMPLES: Record<string, string[]> = {
+  ingest: [
+    "marrow ingest ./meetings --source standups",
+    "cat zoom-call.vtt | marrow ingest -",
+    "marrow ingest --audio ./voice-memo.m4a",
+  ],
+  add: ['marrow add notes.md --source "pricing call"'],
+  answer: ['marrow answer q_123 --text "free trial, no card until they convert"'],
+  goal: [
+    'marrow goal author "One price per workspace" --type product',
+    'marrow goal propose "Passkeys someday" --type user --evidence ev_1a2b',
+  ],
+  drift: ["marrow drift --unstaged", "marrow drift --ci"],
+  loop: ['marrow loop "implement password login" --check --unstaged'],
+  graph: ["marrow graph", "marrow graph dec_1a2b --depth 2"],
+  runs: ["marrow runs --kind drift --status error", "marrow runs --limit 20"],
+  distill: ["marrow distill ev_1a2b", "marrow distill --pending --limit 100"],
+  retract: ['marrow retract dec_1a2b --reason "never actually decided"'],
+};
+
+/** Focused help for one command: its own lines lifted verbatim from the global
+ *  HELP (so the two can never disagree) plus any curated examples. Returns null
+ *  for an unknown command so the caller falls back to the global help. */
+export function commandHelp(command: string): string | null {
+  const own = HELP.split("\n").filter((line) => new RegExp(`^\\s{2}${command}(\\s|$)`).test(line));
+  if (own.length === 0) return null;
+  const examples = COMMAND_EXAMPLES[command];
+  return [
+    `marrow ${command}`,
+    "",
+    ...own.map((line) => line.trim()),
+    ...(examples ? ["", "Examples:", ...examples.map((e) => `  ${e}`)] : []),
+    "",
+    "Run `marrow --help` for every command.",
+  ].join("\n");
+}
 
 /**
  * Run one CLI command against core and return its structured result. The CLI is
@@ -425,6 +476,20 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
     case "map": {
       const limitRaw = flagValue(rest, "--limit");
       return { index: await core.getIndex(limitRaw ? Number(limitRaw) : 200) };
+    }
+
+    case "graph": {
+      // the terminal graph surface: `marrow graph` is the front-door map (what
+      // exists, most connected first); `marrow graph <id>` walks out from one
+      // node so a developer can ask "what connects to this decision" without
+      // opening the console.
+      const nodeId = positional(rest);
+      const limitRaw = flagValue(rest, "--limit");
+      if (!nodeId) {
+        return { index: await core.getIndex(limitRaw ? Number(limitRaw) : 200) };
+      }
+      const depthRaw = flagValue(rest, "--depth") ?? flagValue(rest, "--hops");
+      return core.getNeighbors(nodeId, depthRaw ? Number(depthRaw) : 1);
     }
 
     case "loop": {
@@ -769,7 +834,12 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       const status = flagValue(rest, "--status");
       const limit = flagValue(rest, "--limit");
       const filter: RunFilter = {};
-      if (kind !== undefined) filter.kind = kind as RunKind;
+      if (kind !== undefined) {
+        if (!(RUN_KINDS as readonly string[]).includes(kind)) {
+          throw new Error(`Invalid --kind "${kind}"; one of ${RUN_KINDS.join(", ")}`);
+        }
+        filter.kind = kind as RunKind;
+      }
       if (status === "ok" || status === "error") filter.status = status;
       if (limit !== undefined) filter.limit = Number(limit);
       return { runs: await core.getRuns(filter) };

@@ -18,7 +18,7 @@ import { type Goal, type Question } from "@marrowhq/shared";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatResult, runCommand } from "./cli.js";
+import { commandHelp, formatResult, runCommand } from "./cli.js";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://marrow:marrow@localhost:5432/marrow";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -129,6 +129,19 @@ beforeEach(async () => {
 });
 
 describe("cli", () => {
+  it("commandHelp returns a focused card for a known command and null otherwise", () => {
+    const web = commandHelp("web");
+    expect(web).toContain("marrow web");
+    expect(web).toContain("question-loop");
+    expect(web).not.toContain("Try it (no API key needed)"); // not the global dump
+    // a command with curated examples shows them
+    const graph = commandHelp("graph");
+    expect(graph).toContain("Examples:");
+    expect(graph).toContain("marrow graph dec_1a2b --depth 2");
+    // unknown command falls through to the global help
+    expect(commandHelp("frobnicate")).toBeNull();
+  });
+
   it("prints help and version before requiring DATABASE_URL", () => {
     const helpNoArgs = runMainWithoutDb([]);
     expect(helpNoArgs).toContain("Usage: marrow <command>");
@@ -320,6 +333,54 @@ describe("cli", () => {
     expect(rendered).toContain("most connected first");
     expect(rendered).toContain("checkout");
     expect(rendered).toMatch(/link/);
+  });
+
+  it("graph is the front-door map with no id and a neighbor walk with one", async () => {
+    const ev = await store.insertEvidence({ text: "checkout notes", source: "room/g.md" });
+    const provenance = [{ evidenceId: ev.id, start: 0, end: 8 }];
+    const ent = await store.insertEntity({
+      name: "checkout",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance,
+    });
+    const dec = await store.insertDecision({
+      title: "one-click checkout",
+      rationale: "fewer steps",
+      constraint: false,
+      status: "decided",
+      confidence: { value: 1, source: "human" },
+      provenance,
+    });
+    await store.insertEdge({
+      fromId: ent.id,
+      fromKind: "entity",
+      toId: dec.id,
+      toKind: "decision",
+      relation: "concerns",
+      confidence: 0.6,
+      source: "rule",
+    });
+
+    // no id: the map
+    const map = formatResult(await runCommand(core, ["graph"]));
+    expect(map).toContain("most connected first");
+    expect(map).toContain("checkout");
+
+    // an id: the walk out from that node
+    const walk = formatResult(await runCommand(core, ["graph", ent.id]));
+    expect(walk).toContain("Neighbors of checkout");
+    expect(walk).toContain("one-click checkout");
+    expect(walk).toContain("concerns");
+  });
+
+  it("runs --kind rejects an unknown kind and names the valid set", async () => {
+    await expect(runCommand(core, ["runs", "--kind", "bogus"])).rejects.toThrow(
+      /Invalid --kind "bogus"; one of distill, search, drift, connector_sync, ingest/,
+    );
+    // a real kind is accepted (returns a list, possibly empty).
+    const ok = (await runCommand(core, ["runs", "--kind", "search"])) as { runs: unknown[] };
+    expect(Array.isArray(ok.runs)).toBe(true);
   });
 
   it("decisions shows a verified date on a human-promoted fact", async () => {

@@ -33,6 +33,36 @@ describe("doctor", () => {
     expect(["ok", "warn"]).toContain(byName(checks, "Distillation").status);
   });
 
+  it("warns about MARROW_SECRET_KEY only when a connector needs it", async () => {
+    const { Store } = await import("./store.js");
+    const store = new Store(DATABASE_URL);
+    try {
+      // no connectors: never nags about the key, whether set or not.
+      const clean = await doctor(DATABASE_URL, {});
+      const cleanCheck = clean.find((c) => c.name === "Connector secrets");
+      expect(cleanCheck?.status).toBe("ok");
+
+      // a configured connector with no key: a real warning with the remedy.
+      await store.upsertConnectorConfig({
+        name: "doctor-slack",
+        kind: "slack",
+        enabled: true,
+        settings: {},
+        secretCipher: "x",
+      });
+      const warned = await doctor(DATABASE_URL, {});
+      const warnCheck = warned.find((c) => c.name === "Connector secrets");
+      expect(warnCheck?.status).toBe("warn");
+      expect(warnCheck?.remedy).toMatch(/MARROW_SECRET_KEY/);
+
+      // the same brain with a real key set: back to ok.
+      const keyed = await doctor(DATABASE_URL, { MARROW_SECRET_KEY: "a-long-enough-secret-key" });
+      expect(keyed.find((c) => c.name === "Connector secrets")?.status).toBe("ok");
+    } finally {
+      await store.close();
+    }
+  });
+
   it("surfaces the undistilled backlog: ingested evidence that never became facts", async () => {
     // The most likely first-run confusion: ingest worked, nothing appeared.
     // Doctor must name it with a remedy instead of leaving the loop to look empty.

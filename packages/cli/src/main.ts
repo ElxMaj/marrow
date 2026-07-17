@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { createMarrow, doctor, migrate } from "@marrowhq/core";
 
-import { formatResult, HELP, runCommand } from "./cli.js";
+import { commandHelp, formatResult, HELP, runCommand } from "./cli.js";
 import { colorStatus, dim } from "./color.js";
 import { runWebCommand } from "./web-command.js";
 
@@ -137,6 +137,18 @@ async function main(): Promise<void> {
     console.log(version());
     return;
   }
+  // `marrow <command> --help` shows focused help for that one command; a bare
+  // `--help`, `help`, or no args shows the global help.
+  if (
+    (argv.includes("--help") || argv.includes("-h")) &&
+    argv[0] &&
+    argv[0] !== "help" &&
+    !argv[0].startsWith("-")
+  ) {
+    const focused = commandHelp(argv[0]);
+    console.log(focused ?? HELP);
+    return;
+  }
   if (argv.length === 0 || argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
     console.log(HELP);
     return;
@@ -211,6 +223,13 @@ main().catch((error: unknown) => {
       process.argv[2] === "demo"
         ? "\nPoint DATABASE_URL at your Postgres and re-run `marrow demo`; demo sets up its own schema. From a clone: `pnpm db:up`, then the URL in .env.example."
         : "\nPoint DATABASE_URL at your Postgres, then run `marrow migrate` (or `marrow doctor` to check the whole stack). From a clone: `pnpm db:up`, then the URL in .env.example.";
+  } else if (code === "ENOENT" || /ENOENT|no such file or directory/i.test(message)) {
+    // a missing input file in product voice, with the raw errno as a dim aside
+    // instead of a bare Node stack.
+    exitCode = 2;
+    const path = (error as { path?: string }).path;
+    text = path ? `No file at ${path}.` : "That file does not exist.";
+    hint = "\nCheck the path, or pass a folder to ingest everything under it.";
   } else if (
     /^usage:/i.test(message) ||
     /unknown command/i.test(message) ||
