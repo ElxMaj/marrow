@@ -39,13 +39,31 @@ describe("export-demo static snapshot", () => {
       }),
     };
 
-    const summary = await mod.exportStaticDemo({ core, clientDir, outDir });
+    // the read surface beyond state + trace: the real export wires these from the
+    // store; here they are stubbed so the snapshot files and rewrites are covered.
+    const endpoints = {
+      metrics: async () => ({ total: 2, errorRate: 0 }),
+      runs: async () => [
+        { id: "run_1", kind: "ingest" },
+        { id: "run_2", kind: "distill" },
+      ],
+      connectors: async () => [] as unknown[],
+      goals: async () => [{ id: "goal_1", title: "One price per workspace" }],
+      catches: async () => [{ id: "q_1", decisionTitle: "Free trial, no card upfront" }],
+      catchMetrics: async () => ({ surfaced: 1, actedOn: 0, dismissed: 0 }),
+      recentEvidence: async () => [{ id: "ev_1", source: "standups/x.md" }],
+    };
+
+    const summary = await mod.exportStaticDemo({ core, clientDir, outDir, endpoints });
 
     expect(summary).toEqual({
       decisions: 1,
       entities: 1,
       questions: 1,
       traces: 3,
+      runs: 2,
+      catches: 1,
+      goals: 1,
       outDir,
     });
     expect(readFileSync(join(outDir, "index.html"), "utf8")).toContain("demo");
@@ -63,12 +81,30 @@ describe("export-demo static snapshot", () => {
     expect(existsSync(join(outDir, "api", "trace", "dec_1.json"))).toBe(true);
     expect(existsSync(join(outDir, "api", "trace", "ent_1.json"))).toBe(true);
     expect(existsSync(join(outDir, "api", "trace", "q_1.json"))).toBe(true);
+
+    // every read endpoint is snapshotted, so no demo tab 404s.
+    const runs = JSON.parse(readFileSync(join(outDir, "api", "runs.json"), "utf8")) as unknown[];
+    expect(runs).toHaveLength(2);
+    expect(existsSync(join(outDir, "api", "metrics.json"))).toBe(true);
+    expect(existsSync(join(outDir, "api", "connectors.json"))).toBe(true);
+    expect(existsSync(join(outDir, "api", "goals.json"))).toBe(true);
+    expect(existsSync(join(outDir, "api", "catches.json"))).toBe(true);
+    expect(existsSync(join(outDir, "api", "catches", "metrics.json"))).toBe(true);
+    expect(existsSync(join(outDir, "api", "evidence", "recent.json"))).toBe(true);
+
     const config = JSON.parse(readFileSync(join(outDir, "vercel.json"), "utf8")) as {
       rewrites: { source: string; destination: string }[];
     };
     expect(config.rewrites).toEqual([
       { source: "/api/state", destination: "/api/state.json" },
       { source: "/api/trace/:id", destination: "/api/trace/:id.json" },
+      { source: "/api/metrics", destination: "/api/metrics.json" },
+      { source: "/api/runs", destination: "/api/runs.json" },
+      { source: "/api/connectors", destination: "/api/connectors.json" },
+      { source: "/api/goals", destination: "/api/goals.json" },
+      { source: "/api/catches/metrics", destination: "/api/catches/metrics.json" },
+      { source: "/api/catches", destination: "/api/catches.json" },
+      { source: "/api/evidence/recent", destination: "/api/evidence/recent.json" },
       { source: "/((?!api/).*)", destination: "/index.html" },
     ]);
   });

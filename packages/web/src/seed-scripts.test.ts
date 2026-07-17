@@ -63,12 +63,12 @@ describe("web seed scripts", () => {
       "interviews/design-review.md",
       "notes/pricing-call-2026-05-28.md",
     ]);
-    expect(answers).toHaveLength(3);
-    expect(proposed.some((n) => n.title === "Auth uses magic links, no passwords")).toBe(true);
+    expect(answers).toHaveLength(2);
+    expect(proposed.some((n) => n.title === "The trial is cut to 7 days")).toBe(true);
     expect(
-      proposed.find((n) => n.title === "Auth uses magic links, no passwords")!.provenance[0],
+      proposed.find((n) => n.title === "The trial is cut to 7 days")!.provenance[0],
     ).toMatchObject({ evidenceId: ingested[0]!.id });
-    const conflict = proposed.find((n) => n.prompt?.includes("12 hour idle expiry"));
+    const conflict = proposed.find((n) => n.prompt?.includes("trial length"));
     expect(conflict?.relatesTo).toHaveLength(2);
     expect(answers.map((a) => a.id)).not.toContain(conflict?.id);
     for (const node of proposed) {

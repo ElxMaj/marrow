@@ -1,0 +1,27 @@
+# Marrow
+
+> The product context layer for coding agents. Open source, Apache 2.0, one
+> Postgres. Marrow turns meetings, standups and notes into decided vs open
+> product truth with provenance, then gives coding agents task-scoped context
+> over MCP and CLI.
+
+The room decides, the code reflects, Marrow watches the gap. Every fact
+carries a status (open, decided, contested, superseded), a confidence, and a
+link to the exact evidence span it came from. Models propose; only a human
+answer promotes a fact to decided. Agents get the slice for their task, never
+the whole brain.
+
+## Try it
+
+- `npx @marrowhq/cli demo` runs the hero slice end to end with no API key
+  (needs local Postgres).
+- `claude mcp add marrow -- npx -y @marrowhq/mcp-server` points Claude Code at
+  the brain over MCP. Works with any MCP host: Claude Code, Cursor, Codex.
+- Live demo: https://marrow-live-demo.vercel.app
+
+## Links
+
+- Site: https://marrow-six.vercel.app
+- Source: https://github.com/ElxMaj/marrow
+- npm: https://www.npmjs.com/package/@marrowhq/cli
+- Support: https://github.com/ElxMaj/marrow/issues

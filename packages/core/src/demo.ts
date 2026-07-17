@@ -18,39 +18,36 @@ import {
  *  page quotes these lines verbatim and the demo seed re-ingests this exact
  *  text, so `npx marrow demo`, the hosted demo and the launch site tell one
  *  story (landing/check-ids.mjs holds that contract). Edit with care. */
-export const DEMO_INTERVIEW = `# interview: acme design partner advisory, 2026-05-12
+export const DEMO_INTERVIEW = `# interview: acme design partner launch call, 2026-05-12
 
-[00:18:04] dana: Tell me about the last time the product scared you.
-[00:18:12] partner: A teammate hard-deleted our staging project last quarter. One click, confirmed, and it was gone.
-[00:18:23] dana: There was no way back?
-[00:18:28] partner: Nothing. It purged on confirm. Support could not recover it and we lost a week rebuilding.
-[00:18:37] partner: A hard delete on the wrong project is a support fire. Give us a window to undo it.
-[00:18:45] dana: Then that's it. Soft delete, 30 days, then purge.
-[00:18:51] sam: Agreed. Recoverable for a month, then it is really gone.
-[00:18:58] dana: Does 30 days cover your audit window?
-[00:19:05] partner: More than enough. A Friday-afternoon mistake just has to be survivable.
-[00:19:12] sam: And what purge means for backups still needs its own call. Not today.
-[00:19:18] dana: Noted. Park it as open.
+[00:11:02] maya: Launch is Monday. The trial is the last call we have not made.
+[00:11:09] partner: We ran a card wall last quarter. Signups dropped forty percent overnight, and the ones who stayed churned anyway.
+[00:11:18] jonas: And every support ticket in week one was the card form. We cannot spend launch week on billing edge cases.
+[00:11:27] maya: Then the wall comes down. Free trial, no card until they convert.
+[00:11:36] partner: That is the version I can sell internally. Our champions can start it the day they find it.
+[00:11:42] jonas: What about annual billing? Finance put it on the pilot deck.
+[00:11:48] maya: Annual billing needs its own call with finance. Not this week.
+[00:11:55] jonas: Noted. Parking annual billing as open, trial scope is decided.
 `;
 
 /** A deterministic stand-in for the model: it distills the known interview into
- *  the soft-delete decision and the entities, each with a real span. One entity
- *  (soft delete) is covered by the decision; the other (backup retention) is
+ *  the free-trial decision and the entities, each with a real span. One entity
+ *  (free trial) is covered by the decision; the other (annual billing) is
  *  not, so gap detection raises it as the open question the hero leaves behind. */
 export function createDemoModel(): ModelProvider {
   // Returns verbatim quotes; the engine locates each one in the interview text,
   // the same quote-based provenance a real model uses.
   const extraction = JSON.stringify({
     entities: [
-      { name: "soft delete", quote: "Soft delete" },
-      { name: "backup retention", quote: "backups" },
+      { name: "free trial", quote: "Free trial" },
+      { name: "annual billing", quote: "annual billing" },
     ],
     decisions: [
       {
-        title: "Soft delete for 30 days, then purge",
+        title: "Free trial, no card upfront",
         rationale:
-          "A teammate hard-deleted a project and the team lost a week with no way to undo it",
-        quote: "Soft delete, 30 days, then purge",
+          "A card wall cuts signups and floods week-one support; the card question waits until they convert",
+        quote: "Free trial, no card until they convert",
       },
     ],
   });
@@ -164,7 +161,7 @@ export interface DemoResult {
 
 /**
  * The scripted slice: ingest the interview, distill it, surface a question, the
- * developer answers (the only path to decided), and the soft-delete decision
+ * developer answers (the only path to decided), and the free-trial decision
  * becomes decided with provenance back to the interview span.
  */
 export async function runDemo(core: Marrow, interview: string): Promise<DemoResult> {
@@ -174,17 +171,17 @@ export async function runDemo(core: Marrow, interview: string): Promise<DemoResu
   });
 
   const decision = nodes.find((n): n is Decision => n.kind === "decision");
-  if (!decision) throw new Error("demo: distillation did not produce the soft-delete decision");
+  if (!decision) throw new Error("demo: distillation did not produce the launch-trial decision");
 
   // The loop surfaces a question; answering it is the only thing that promotes
   // a node to decided.
   const question = await core.proposeNode({
     kind: "question",
-    prompt: "Confirm: is soft delete with a 30 day window the decided approach?",
+    prompt: "Confirm: is the no-card free trial the decided launch scope?",
     relatesTo: [decision.id],
     provenance: decision.provenance,
   });
-  await core.answer(question.id, "Yes, soft delete with a 30 day window, then purge");
+  await core.answer(question.id, "Yes, free trial, no card until they convert");
 
   const decided = await core.getDecision(decision.id);
   if (!decided) throw new Error("demo: the decision vanished after promotion");
@@ -193,7 +190,7 @@ export async function runDemo(core: Marrow, interview: string): Promise<DemoResu
     decisionId: decision.id,
     decision: decided,
     trace: await core.traceToSource(decision.id),
-    answer: await core.search("soft delete", 5),
+    answer: await core.search("free trial", 5),
     openQuestions: await core.getOpenQuestions(),
   };
 }

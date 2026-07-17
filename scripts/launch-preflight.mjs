@@ -315,7 +315,7 @@ export function evaluatePackedTarballFiles(filenames) {
 }
 
 export function evaluateHeroSourcePath(html) {
-  const cover = html.match(/<section class="cover">([\s\S]*?)<\/section>/)?.[1];
+  const cover = html.match(/<section class="cover"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   if (!cover) return { ok: false, detail: "missing cover section" };
   if (cover.includes('data-copy="pnpm marrow demo"')) {
     return {
@@ -335,27 +335,31 @@ export function evaluateHeroSourcePath(html) {
 export function evaluateDemoDocsTruth({ readme, demoDoc }) {
   const stale = [];
   if (/magic-link decision/i.test(readme)) stale.push("README says magic-link decision");
+  if (/soft-delete decision/i.test(readme)) stale.push("README says soft-delete decision");
   if (/pfc-gdynia|front-desk|magic links, no shared passwords/i.test(demoDoc)) {
     stale.push("docs/demo.md says old magic-link slice");
+  }
+  if (/soft delete, 30 days, then purge/i.test(demoDoc)) {
+    stale.push("docs/demo.md says old soft-delete slice");
   }
   if (stale.length > 0) {
     return {
       ok: false,
-      detail: `stale magic-link demo copy: ${stale.join("; ")}`,
+      detail: `stale demo copy: ${stale.join("; ")}`,
     };
   }
 
   if (
-    /soft-delete decision/i.test(readme) &&
+    /free-trial decision/i.test(readme) &&
     demoDoc.includes("packages/core/fixtures/demo/design-partner.md") &&
-    /soft delete, 30 days, then purge/i.test(demoDoc)
+    /free trial, no card until they convert/i.test(demoDoc)
   ) {
-    return { ok: true, detail: "demo docs match the bundled soft-delete slice" };
+    return { ok: true, detail: "demo docs match the bundled free-trial slice" };
   }
 
   return {
     ok: false,
-    detail: "demo docs do not prove the bundled soft-delete slice",
+    detail: "demo docs do not prove the bundled free-trial slice",
   };
 }
 
@@ -579,8 +583,14 @@ async function checkLiveSite() {
   else fail("launch site", `HTTP ${home.response.status}`);
 
   const html = home.text;
-  if (html.includes(`rel="canonical" href="${canonicalUrl}"`)) {
-    pass("canonical URL", `points at ${canonicalUrl}`);
+  // Tolerate the trailing-slash difference between the configured URL and the
+  // canonical the framework emits; both name the same origin.
+  const canonicalBare = canonicalUrl.replace(/\/$/, "");
+  if (
+    html.includes(`rel="canonical" href="${canonicalUrl}"`) ||
+    html.includes(`rel="canonical" href="${canonicalBare}"`)
+  ) {
+    pass("canonical URL", `points at ${canonicalBare}`);
   } else {
     fail("canonical URL", "missing or stale canonical URL");
   }
@@ -747,10 +757,22 @@ async function checkBenchmarkAndClaims() {
   if (demoDocsTruth.ok) pass("demo docs truth", demoDocsTruth.detail);
   else fail("demo docs truth", demoDocsTruth.detail);
 
-  const landing = await readFile(join(root, "landing/index.html"), "utf8");
-  const sourceSetup = evaluateSourceSetupPath({ readme, landing });
-  if (sourceSetup.ok) pass("source setup migration", sourceSetup.detail);
-  else fail("source setup migration", sourceSetup.detail);
+  // The landing is a Next.js static export now: the checkable artifact is the
+  // build output, not a source file. Build it first if it is missing.
+  let landing;
+  try {
+    landing = await readFile(join(root, "landing/out/index.html"), "utf8");
+  } catch {
+    fail(
+      "source setup migration",
+      "landing/out/index.html missing; run `pnpm --filter @marrowhq/landing build` first",
+    );
+  }
+  if (landing !== undefined) {
+    const sourceSetup = evaluateSourceSetupPath({ readme, landing });
+    if (sourceSetup.ok) pass("source setup migration", sourceSetup.detail);
+    else fail("source setup migration", sourceSetup.detail);
+  }
 }
 
 async function checkPackageFiles() {

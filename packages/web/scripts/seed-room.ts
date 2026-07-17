@@ -10,21 +10,19 @@ type RoomSeedCore = Pick<Marrow, "ingest" | "proposeNode" | "answer">;
 
 export const STANDUP = `# Standup 2026-06-02
 
-priya: Soft delete shipped to staging, recoverable for 30 days like we agreed. QA restored a deleted project this morning in two clicks.
+priya: No-card signup shipped to staging like we agreed. QA started a trial this morning without a billing form in sight.
 
-priya: The old rule where a delete needed a founder email to reverse is dead, soft delete replaced it.
+priya: The old plan where launch needed a card wall is dead, the free trial replaced it.
 
-marco: The open one is dashboard sessions. I want a 12 hour idle timeout, half our users sit on shared screens in open offices and walk away.
+marco: The open one is trial length. I want the trial cut to 7 days, a long trial goes cold before anyone converts.
 
-priya: Keep sessions until they sign out. People live in the dashboard all day and a re-login mid-task kills the flow.
+priya: Keep the trial at 14 days. Activation takes two weekends, teams hit the aha moment on the second one.
 
-marco: We did not settle it. Parking it for the security review.
+marco: We did not settle it. Parking it for the growth review.
 
 lena: The editor drops every time someone is on hotel wifi and their edits vanish. It has to keep working offline and sync when the connection is back.
 
 lena: Also the failed-payment retries fired four times in an hour last night for the annual plans. The backoff is too tight, someone has to look this week.
-
-marco: Also we settled auth, magic links only, no passwords. Password resets and shared terminals are a constant support and security drain.
 `;
 
 export const REVIEW = `# Interview: acme design partner review, 2026-06-04
@@ -72,23 +70,10 @@ export async function widenTheRoom(core: RoomSeedCore): Promise<void> {
     source: "notes/pricing-call-2026-05-28.md",
   });
 
-  // -- auth: a decision that will surface as drift if a prospect's repo still
-  //    uses passwords. useful for the "catch in minutes" hosted demo path.
-  const auth = await core.proposeNode({
-    kind: "decision",
-    title: "Auth uses magic links, no passwords",
-    rationale: "Password resets and shared terminals are a support and security burden",
-    provenance: [spanOf(standupId, STANDUP, "magic links only, no passwords")],
-    confidence: 0.75,
-  });
-  const authQ = await core.proposeNode({
-    kind: "question",
-    prompt: "Confirm magic-link auth, no passwords, for the public launch.",
-    relatesTo: [auth.id],
-    provenance: auth.provenance,
-    confidence: 0.7,
-  });
-  await core.answer(authQ.id, "Confirmed. Magic links only. No local passwords in the codebase.");
+  // -- the launch-trial decision itself lives in core's DEMO_INTERVIEW (the
+  //    hero slice ingests and decides it); the standup here is its aftermath:
+  //    shipped, the old card-wall plan superseded, and trial length left open.
+  //    that decided fact is what surfaces as drift when a repo adds a card wall.
 
   // -- the editor goes offline-first: heard in two rooms, then locked by a human.
   const offline = await core.proposeNode({
@@ -137,29 +122,28 @@ export async function widenTheRoom(core: RoomSeedCore): Promise<void> {
     "Confirmed, per workspace flat. No seat counting anywhere in the product.",
   );
 
-  // -- dashboard sessions: the room split, two open decisions, one conflict the
+  // -- trial length: the room split, two open decisions, one conflict the
   //    human has to settle. This is the picker the demo exists to show.
-  const idleExpiry = await core.proposeNode({
+  const trialShort = await core.proposeNode({
     kind: "decision",
-    title: "Dashboard sessions expire after 12 hours idle",
-    rationale: "Shared screens in open offices, walk-away risk",
-    provenance: [spanOf(standupId, STANDUP, "I want a 12 hour idle timeout")],
+    title: "The trial is cut to 7 days",
+    rationale: "A long trial goes cold before anyone converts",
+    provenance: [spanOf(standupId, STANDUP, "I want the trial cut to 7 days")],
     confidence: 0.55,
   });
-  const persistSession = await core.proposeNode({
+  const trialLong = await core.proposeNode({
     kind: "decision",
-    title: "Dashboard sessions persist until the user signs out",
-    rationale: "People live in the dashboard all day, a mid-task re-login kills flow",
-    provenance: [spanOf(standupId, STANDUP, "Keep sessions until they sign out")],
+    title: "The trial stays at 14 days",
+    rationale: "Activation takes two weekends before the aha moment lands",
+    provenance: [spanOf(standupId, STANDUP, "Keep the trial at 14 days")],
     confidence: 0.55,
   });
   await core.proposeNode({
     kind: "question",
-    prompt:
-      "The team split on dashboard sessions: a 12 hour idle expiry or persist until signout. Which one holds?",
-    relatesTo: [idleExpiry.id, persistSession.id],
+    prompt: "The team split on trial length: 7 days or 14 days. Which one holds?",
+    relatesTo: [trialShort.id, trialLong.id],
     provenance: [
-      spanOf(standupId, STANDUP, "We did not settle it. Parking it for the security review"),
+      spanOf(standupId, STANDUP, "We did not settle it. Parking it for the growth review"),
     ],
     confidence: 0.6,
   });

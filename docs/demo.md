@@ -11,16 +11,16 @@ pnpm db:migrate
 pnpm marrow demo    # runs the scripted slice end to end
 ```
 
-`pnpm marrow demo` ingests the interview fixture (`packages/core/fixtures/demo/design-partner.md`, recorded with the evidence source label `interviews/design-partner.md`), distills it, answers the loop's question, and prints the decided soft-delete decision with its trace back to the interview. It distills deterministically so it runs with no API key; set `MARROW_PROVIDER` plus a key to run the same pipeline on real input.
+`pnpm marrow demo` ingests the interview fixture (`packages/core/fixtures/demo/design-partner.md`, recorded with the evidence source label `interviews/design-partner.md`), distills it, answers the loop's question, and prints the decided free-trial decision with its trace back to the interview. It distills deterministically so it runs with no API key; set `MARROW_PROVIDER` plus a key to run the same pipeline on real input.
 
 ## The 90 second script
 
-1. The room. A design partner explains that one hard delete destroyed a staging project and cost a week of recovery.
-2. Distill. Marrow extracts an open decision (`Soft delete, 30 days, then purge`) and related open product questions, each cited to an exact span in the interview. Nothing is decided yet.
-3. The loop. Marrow surfaces the question. The developer answers "Yes, soft delete with a 30 day window, then purge." That is the only thing that promotes a node to decided.
-4. Decided, with provenance. The decision is now decided, human confidence, and `trace_to_source` returns the exact interview line: "soft delete, 30 days, then purge".
-5. The agent. In Claude Code, ask "why soft delete". Marrow returns the decided decision with its status and source over MCP, a few task-scoped tokens, not the whole room. The agent builds the delete flow against the recovery-window decision, traceable with `marrow trace`.
-6. Still open. Backup retention stays open. The brain knows what it does not know.
+1. The room. Launch is Monday and the trial is the last call the team has not made: a card wall last quarter cut signups forty percent and flooded week-one support.
+2. Distill. Marrow extracts an open decision (`Free trial, no card until they convert`) and related open product questions, each cited to an exact span in the interview. Nothing is decided yet.
+3. The loop. Marrow surfaces the question. The developer answers "Yes, free trial, no card until they convert." That is the only thing that promotes a node to decided.
+4. Decided, with provenance. The decision is now decided, human confidence, and `trace_to_source` returns the exact interview line: "Free trial, no card until they convert."
+5. The agent. In Claude Code, ask "why no card at signup". Marrow returns the decided decision with its status and source over MCP, a few task-scoped tokens, not the whole room. The agent builds the signup flow against the no-card decision, traceable with `marrow trace`.
+6. Still open. Annual billing stays open, parked for its own call with finance. The brain knows what it does not know.
 
 ## Connect a coding agent over MCP
 

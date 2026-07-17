@@ -1,5 +1,5 @@
 // `pnpm demo`: the hero slice end to end. ingests the design-partner interview,
-// distills it, answers the loop, and shows the soft-delete decision decided with
+// distills it, answers the loop, and shows the free-trial decision decided with
 // provenance back to the exact interview line. leaves the brain populated so the
 // MCP server and web view can be pointed at it.
 import { readFile } from "node:fs/promises";
@@ -43,9 +43,9 @@ async function main(): Promise<void> {
   console.log(`   ${span?.source}`);
   console.log(`   "${span?.spanText}"`);
   console.log(
-    `5. An agent asking "why soft delete" over MCP gets ${result.answer.length} task-scoped result(s), each with status + provenance`,
+    `5. An agent asking "why no card at signup" over MCP gets ${result.answer.length} task-scoped result(s), each with status + provenance`,
   );
-  console.log(`   Still open: ${result.openQuestions.length} question(s), e.g. backup retention`);
+  console.log(`   Still open: ${result.openQuestions.length} question(s), e.g. annual billing`);
   console.log("\nThe decision is decided and it traces to the exact interview line.\n");
 }
 
