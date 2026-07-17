@@ -12,6 +12,7 @@ export {
   type NeighborsBrief,
   type GraphEdge,
   type BrainGraph,
+  type DriftScanResult,
   type VerifyResult,
   type VerifyReport,
   type LintIssue,
