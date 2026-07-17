@@ -209,14 +209,49 @@ describe("web api server", () => {
     expect(await traversal.text()).toMatch(/marrow/);
   });
 
-  it("caps JSON request bodies and returns the wrapped error", async () => {
+  it("caps JSON request bodies with a 413, not a 500", async () => {
     const res = await fetch(`${base}/api/ingest`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: "x".repeat(1_000_001), source: "too-large.md" }),
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(413);
     expect(((await res.json()) as { error: string }).error).toMatch(/request body too large/);
+  });
+
+  it("answers client mistakes with typed 4xx, never a 500 with internals", async () => {
+    // malformed JSON body -> 400 naming the problem
+    const badJson = await fetch(`${base}/api/answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    expect(badJson.status).toBe(400);
+    expect(((await badJson.json()) as { error: string }).error).toMatch(/not valid JSON/);
+
+    // unknown API route -> JSON 404 envelope
+    const unknown = await fetch(`${base}/api/definitely-not-a-route`);
+    expect(unknown.status).toBe(404);
+    expect(((await unknown.json()) as { error: string }).error).toBe("not found");
+
+    // known route, wrong verb -> 405 with the Allow header
+    const wrongVerb = await fetch(`${base}/api/state`, { method: "POST" });
+    expect(wrongVerb.status).toBe(405);
+    expect(wrongVerb.headers.get("allow")).toBe("GET");
+    expect(((await wrongVerb.json()) as { error: string }).error).toMatch(/use GET/);
+
+    // a missing id in core's voice -> 404, not 500
+    const missing = await fetch(`${base}/api/trace/dec_does_not_exist`);
+    expect(missing.status).toBe(404);
+
+    // a trailing slash is the same route
+    const slash = await fetch(`${base}/api/state/`);
+    expect(slash.status).toBe(200);
+
+    // HEAD reads as up with no body
+    const head = await fetch(`${base}/api/state`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
   });
 
   it("startWebServer binds localhost by default and serves the SPA", async () => {
