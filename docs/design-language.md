@@ -55,6 +55,33 @@ Named curves only: `--ease-out` for entrances and state changes, `--ease-marker`
 
 No purple or blue gradients. No glassmorphism. No emoji or sparkle in product UI. No rainbow status sets. No cold pure grays or pure white text. No second accent. No bold-for-hierarchy. No uniform 8px radius on everything. No shadow-for-depth outside the enumerated overlay and console shadows. No dependency for visualization: the graph is hand-rolled SVG. No Google Fonts hotlink. Sentence case, plain language, no em dashes.
 
+## The copy voice
+
+Copy is part of the design, held to the same anti-slop bar as the pixels. The room speaks plainly and specifically, and it never sounds like a generated landing page.
+
+- Name the thing, do not sell it. "The room, distilled" and "no fact without a quote", not "powerful AI-driven insights". Banned outright: powerful, seamless, effortless, revolutionary, unlock, supercharge, leverage (as a verb), cutting-edge, next-generation, "AI-powered", "AI-driven", game-changing, robust, world-class (in product copy).
+- A number beats an adjective. "2.5x fewer tokens, measured" beats "dramatically smaller". If a claim can carry a figure or a source, it must.
+- Quote the evidence. The product's whole promise is provenance, so the copy shows the span, the id, the date, not a paraphrase dressed as certainty.
+- Sentence case everywhere, one voice. No Title Case Headings, no exclamation marks, no emoji in product UI, no em dashes. A colon or a full stop does the work a dash wants to do.
+- Say the honest thing. "Pricing is not final and we will not pretend it is" and "nothing is saved" are the register: a real tradeoff stated, not hidden.
+
+## The slop audit
+
+Every UI change passes this checklist before it is called done. Each gate exists because it catches a specific "AI slop" tell; a "no" is a defect, not a preference. It is the design-engineering equivalent of the test suite: run it, in a real browser, both console themes, reduced motion on and off.
+
+1. **One accent.** Gold is the only accent, and it means action, never status. No second brand color anywhere.
+2. **No decorative gradient.** No purple or blue gradient, no gradient used as background fill or "vibe". The only gradients are the enumerated glow devices, each argued in its stylesheet.
+3. **Hairlines, not shadows.** Depth is a 1px `--line` border. Shadows exist only in the two enumerated places (the landing hero console, the overlay). If a card has a drop shadow, it is wrong.
+4. **No card sprawl.** A grid of identical rounded cards with identical weight is the signature slop layout. Marrow uses the file line, the evidence stream, the mono ledger, the node-link map. Reach for a card only when the content is genuinely a set of peers, and give the set one clear primary.
+5. **Hierarchy from size and ink, not bold.** Weight caps at 560 in the sans voice. If two things need to differ, change the size or the ink token, not the weight.
+6. **Radii are deliberate.** No single 8px radius pasted onto everything and no random per-element radii; radius comes from the token scale and is chosen per surface.
+7. **Three voices, in their lanes.** Archivo for decided truth and titles, Geist for working prose, Geist Mono for evidence (ids, spans, confidence, sources). Numerals in a metric are sans lining figures, never the mono slashed zero.
+8. **Status is glyph plus label plus hue, never color alone.** And never gold.
+9. **Motion is purposeful and off the ladder is a decision.** Named curves, transform and opacity only, one spring for the promote beat, everything behind `prefers-reduced-motion`. No animation added because it was offered rather than needed.
+10. **Contrast and focus are non-negotiable.** Every text and control pair clears WCAG AA, every interactive element has a visible focus ring, both themes hold Lighthouse Accessibility 100.
+11. **Copy passes the voice section above.** No banned word, a number where a claim wants one, sentence case, no em dashes.
+12. **It reads made, not generated.** The final gate: would this screen be indistinguishable from a hundred other AI dashboards? If yes, it has not earned its place in the room yet.
+
 ## Changing the language
 
-Tokens first: if you are typing a hex value outside the `:root` ramps, stop. New surfaces inherit the spine before earning exceptions. Any change to a UI surface is verified in a real browser (both console themes, reduced motion on and off) before it is called done, and both themes hold Lighthouse Accessibility 100.
+Tokens first: if you are typing a hex value outside the `:root` ramps, stop. New surfaces inherit the spine before earning exceptions. Any change to a UI surface is verified in a real browser (both console themes, reduced motion on and off) before it is called done, both themes hold Lighthouse Accessibility 100, and it passes the slop audit above.
