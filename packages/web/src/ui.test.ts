@@ -12,8 +12,10 @@ import {
   formatLatency,
   formatTokens,
   formatUsd,
+  hasUnsavedWork,
   parseRoute,
   provenanceWeight,
+  registerUnsavedGuard,
   resolveInitialTheme,
   ROUTES,
   runKindLabel,
@@ -416,5 +418,28 @@ describe("canActOnCatch", () => {
   it("is false once a catch is acted on or dismissed", () => {
     expect(canActOnCatch("acted-on")).toBe(false);
     expect(canActOnCatch("dismissed")).toBe(false);
+  });
+});
+
+describe("unsaved-work guard registry", () => {
+  it("reports unsaved work only while a dirty checker is registered and true", () => {
+    let dirty = false;
+    const unregister = registerUnsavedGuard(() => dirty);
+    expect(hasUnsavedWork()).toBe(false);
+    dirty = true;
+    expect(hasUnsavedWork()).toBe(true);
+    // the router asks before navigating; once the checker unregisters (view
+    // unmount) the registry is clear even if the last value was dirty.
+    unregister();
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it("is true when any one of several views is dirty", () => {
+    const offA = registerUnsavedGuard(() => false);
+    const offB = registerUnsavedGuard(() => true);
+    expect(hasUnsavedWork()).toBe(true);
+    offB();
+    expect(hasUnsavedWork()).toBe(false);
+    offA();
   });
 });

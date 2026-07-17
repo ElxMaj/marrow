@@ -483,6 +483,28 @@ export function formatLatency(ms: number): string {
   return `${(ms / 60_000).toFixed(1)}m`;
 }
 
+/** The unsaved-work registry. A view with an in-progress form registers a
+ *  predicate; the router consults it BEFORE navigating, so cancelling a leave
+ *  keeps the form mounted and the draft intact. Module-level and tiny: no
+ *  context, no dependency, and it clears itself when the view unmounts. */
+const unsavedGuards = new Set<() => boolean>();
+
+/** Register a dirty-checker; returns the unregister to call on unmount. */
+export function registerUnsavedGuard(check: () => boolean): () => void {
+  unsavedGuards.add(check);
+  return () => {
+    unsavedGuards.delete(check);
+  };
+}
+
+/** True when any registered view reports an unsaved edit. */
+export function hasUnsavedWork(): boolean {
+  for (const check of unsavedGuards) {
+    if (check()) return true;
+  }
+  return false;
+}
+
 /** A compact relative time: "just now", "8m ago", "3h ago", "2d ago", else a
  *  date. pure: takes an explicit now so it is testable. */
 export function timeAgo(iso: string | undefined, now: number = Date.now()): string {

@@ -591,7 +591,11 @@ async function handle(
       return send(res, 400, { error: "text and source are required" });
     }
     const evidence = await store.insertEvidence({ text: body.text, source: body.source });
-    return send(res, 200, evidenceLite(evidence));
+    // tell the console what happens next: with a model configured the evidence
+    // can become facts; keyless it stays raw until distilled. the UI turns
+    // canDistill into the exact next command instead of leaving the user to
+    // wonder why no questions appeared.
+    return send(res, 200, { ...evidenceLite(evidence), canDistill: core.canDistill });
   }
   if (path === "/api/answer" && req.method === "POST") {
     if (isReadOnly()) {
