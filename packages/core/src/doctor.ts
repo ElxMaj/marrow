@@ -26,6 +26,7 @@ export interface DoctorCheck {
  *  agent can read it as JSON. */
 export async function doctor(
   databaseUrl: string | undefined = process.env.DATABASE_URL,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
@@ -133,6 +134,46 @@ export async function doctor(
       }
     } catch {
       // schema missing or unreachable: already reported by the checks above.
+    } finally {
+      await pool.end();
+    }
+  }
+
+  // Connector secrets: MARROW_SECRET_KEY encrypts them before they touch the
+  // database. Only warn when it actually matters (a connector is configured
+  // but the key is missing or too short to be a real secret), so a user who
+  // never touches connectors is not nagged.
+  if (databaseUrl) {
+    const pool = new pg.Pool({ connectionString: databaseUrl });
+    try {
+      const res = await pool.query<{ n: number }>(
+        "select count(*)::int as n from connector_config",
+      );
+      const connectors = res.rows[0]?.n ?? 0;
+      const key = env.MARROW_SECRET_KEY;
+      if (connectors === 0) {
+        checks.push({
+          name: "Connector secrets",
+          status: "ok",
+          detail: key ? "MARROW_SECRET_KEY set" : "no connectors configured",
+        });
+      } else if (!key || key.length < 16) {
+        checks.push({
+          name: "Connector secrets",
+          status: "warn",
+          detail: `${connectors} connector(s) configured but MARROW_SECRET_KEY is ${key ? "too short" : "unset"}`,
+          remedy:
+            "Set MARROW_SECRET_KEY to a long random string; connector syncs cannot decrypt their tokens without it.",
+        });
+      } else {
+        checks.push({
+          name: "Connector secrets",
+          status: "ok",
+          detail: `${connectors} connector(s), MARROW_SECRET_KEY set`,
+        });
+      }
+    } catch {
+      // no connector table (schema not migrated): the Schema check owns that.
     } finally {
       await pool.end();
     }
