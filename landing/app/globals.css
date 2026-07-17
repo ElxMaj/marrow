@@ -176,6 +176,25 @@ a {
   white-space: nowrap;
 }
 
+/* skip to content: off-screen until focused, so a keyboard visitor jumps the
+   nav on a long single page instead of tabbing through every link first. */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 40;
+  padding: 8px 16px;
+  background: var(--surface-3);
+  color: var(--ink);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--doc-radius);
+  font-size: var(--text-body-s);
+  transition: top var(--dur) var(--ease-out);
+}
+.skip-link:focus-visible {
+  top: 12px;
+}
+
 /* ---- layout shells ---- */
 main {
   display: block;

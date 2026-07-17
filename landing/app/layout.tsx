@@ -39,6 +39,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "/",
+    // a named site so a Slack or iMessage share reads "Marrow", not the raw
+    // vercel.app hostname.
+    siteName: "Marrow",
     title: "Marrow · The product context layer for coding agents",
     description:
       "The decision layer between the product room and coding agents: task briefs, drift catches, truth maintenance, and provenance on every fact.",
@@ -46,6 +49,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    title: "Marrow · The product context layer for coding agents",
+    description:
+      "The decision layer between the product room and coding agents: task briefs, drift catches, truth maintenance, and provenance on every fact.",
     images: ["/og.png"],
   },
   icons: { icon: { url: "/favicon.svg", type: "image/svg+xml" } },
