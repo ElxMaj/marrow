@@ -99,6 +99,12 @@ export function staticDemoVercelConfig(): Record<string, unknown> {
     ],
     headers: [
       {
+        // content-hashed bundles never change under the same name: cache
+        // them hard so repeat visits stop revalidating every asset.
+        source: "/assets/(.*)",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
@@ -132,7 +138,17 @@ export async function exportStaticDemo({
     core.getOpenQuestions(),
     core.getGraph(),
   ]);
-  const state = { decisions, entities, questions, graph, readOnly: true };
+  // seededAt: the honest age line. The snapshot is a moment in time; the
+  // banner says when that moment was instead of every event aging in
+  // lockstep toward "abandoned".
+  const state = {
+    decisions,
+    entities,
+    questions,
+    graph,
+    readOnly: true,
+    seededAt: new Date().toISOString(),
+  };
 
   // wipe the snapshot but keep .vercel/: it holds the project link the deploy
   // command needs, and losing it silently deploys to a fresh project.

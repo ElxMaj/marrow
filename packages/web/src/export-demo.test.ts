@@ -75,11 +75,15 @@ describe("export-demo static snapshot", () => {
       entities: unknown[];
       questions: unknown[];
       graph: { nodes: unknown[]; edges: unknown[] };
+      seededAt: string;
     };
     expect(state.readOnly).toBe(true);
     // the living map's data must ride in the snapshot: an absent graph made
     // the hosted demo's Graph view claim the brain was empty.
     expect(state.graph.nodes.length).toBeGreaterThan(0);
+    // the honest age line: the snapshot says when it was seeded instead of
+    // every event aging in lockstep toward "abandoned".
+    expect(new Date(state.seededAt).getTime()).toBeGreaterThan(0);
     expect(state.decisions).toHaveLength(1);
     expect(state.entities).toHaveLength(1);
     expect(state.questions).toHaveLength(1);

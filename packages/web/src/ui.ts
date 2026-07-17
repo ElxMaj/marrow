@@ -124,6 +124,9 @@ export interface SandboxState {
   questions: Question[];
   graph?: BrainGraphView;
   readOnly?: boolean;
+  /** When the hosted snapshot was seeded. Only the static demo carries it;
+   *  the banner turns it into an honest "seeded N days ago". */
+  seededAt?: string;
 }
 
 export interface SandboxResult {
