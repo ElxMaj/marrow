@@ -309,7 +309,10 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
   const [command, ...rest] = argv;
   switch (command) {
     case "ask":
-      return { results: await core.search(rest.filter((a) => !a.startsWith("--")).join(" ")) };
+      return {
+        results: await core.search(rest.filter((a) => !a.startsWith("--")).join(" ")),
+        searchMode: core.searchMode,
+      };
 
     case "decisions": {
       const status = flagValue(rest, "--status");
@@ -912,6 +915,7 @@ export function formatResult(result: unknown): string {
     const brief = r as {
       task: string;
       status: string;
+      statusReason?: string;
       safeToBuild: { facts: Parameters<typeof formatBriefNode>[0][] };
       askHumanFirst: {
         questions: Parameters<typeof formatBriefNode>[0][];
@@ -952,6 +956,7 @@ export function formatResult(result: unknown): string {
     const lines = [
       `Task brief: ${brief.task}`,
       `Status: ${brief.status}`,
+      ...(brief.statusReason !== undefined ? [`  ${brief.statusReason}`] : []),
       "",
       "Safe to build",
       safe,
@@ -1447,10 +1452,17 @@ export function formatResult(result: unknown): string {
       if (nodes.length === 0) {
         // a search that matches nothing is not the same as an empty brain, so
         // `ask` points at broader terms and browsing instead of implying the
-        // ingest failed. the list commands keep the empty-brain hint.
-        return key === "results"
-          ? "(No matches). Try broader terms, browse with `marrow decisions`, or `marrow add <file>` to ingest more of the room."
-          : `(No ${key} yet). If the brain is empty, run \`marrow add <file>\` to ingest the room.`;
+        // ingest failed. the list commands keep the empty-brain hint. when the
+        // search ran substring-only, say so: a paraphrase finding nothing in
+        // lexical mode is the mode's fault, not the brain's.
+        if (key === "results") {
+          const lexical =
+            r.searchMode === "lexical"
+              ? " Search ran lexical-only (no embedder wired); exact words match, paraphrases do not. Unset MARROW_LOCAL_EMBEDDINGS to search by meaning."
+              : "";
+          return `(No matches). Try broader terms, browse with \`marrow decisions\`, or \`marrow add <file>\` to ingest more of the room.${lexical}`;
+        }
+        return `(No ${key} yet). If the brain is empty, run \`marrow add <file>\` to ingest the room.`;
       }
       return nodes.map(formatNode).join("\n");
     }

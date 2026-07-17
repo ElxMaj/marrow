@@ -329,6 +329,9 @@ export interface BrainGraph {
 export interface TaskBrief {
   task: string;
   status: "safe_to_build" | "ask_human_first";
+  /** Present when the status needs explaining, e.g. an empty brief: a brain
+   *  that holds nothing about the task must never read as a green light. */
+  statusReason?: string;
   safeToBuild: { facts: BriefNode[] };
   askHumanFirst: { questions: BriefNode[]; contestedFacts: BriefNode[] };
   /** The session buffer: evidence appended but not yet distilled that matches
@@ -500,6 +503,13 @@ export class Marrow {
    *  silently storing evidence that never becomes product truth. */
   get canDistill(): boolean {
     return this.model !== undefined && this.embedding !== undefined;
+  }
+
+  /** How search will rank: with an embedder wired it searches by meaning, else
+   *  it is substring-only. Surfaces let the user see the mode instead of
+   *  guessing why a paraphrased query returned nothing. */
+  get searchMode(): "semantic" | "lexical" {
+    return this.embedding !== undefined ? "semantic" : "lexical";
   }
 
   /**
@@ -1201,10 +1211,21 @@ export class Marrow {
       questions: uniqueBriefNodes(questions).slice(0, BRIEF_LIMIT),
       contestedFacts: await this.briefNodes(contestedFacts, BRIEF_LIMIT),
     };
+    const safeFactsBrief = await this.briefNodes(safeFacts, BRIEF_LIMIT);
+    // An empty brief must never read as a green light: a brain that holds
+    // nothing about the task (no decided facts, no questions, no contested
+    // facts) cannot vouch for building. Gate it as ask_human_first and say why.
+    const briefEmpty =
+      safeFactsBrief.length === 0 &&
+      askHumanFirst.questions.length === 0 &&
+      askHumanFirst.contestedFacts.length === 0;
     const status =
-      askHumanFirst.questions.length > 0 || askHumanFirst.contestedFacts.length > 0
+      askHumanFirst.questions.length > 0 || askHumanFirst.contestedFacts.length > 0 || briefEmpty
         ? "ask_human_first"
         : "safe_to_build";
+    const statusReason = briefEmpty
+      ? "The brain holds nothing about this task: no decided facts, no open questions, no contested facts. Ask a human for context, or ingest the room (`marrow add <file>`) before building."
+      : undefined;
 
     // the session buffer: what was just said but not yet distilled would
     // otherwise be invisible to this very brief (the read-after-write hole).
@@ -1232,7 +1253,8 @@ export class Marrow {
     return {
       task,
       status,
-      safeToBuild: { facts: await this.briefNodes(safeFacts, BRIEF_LIMIT) },
+      ...(statusReason !== undefined ? { statusReason } : {}),
+      safeToBuild: { facts: safeFactsBrief },
       askHumanFirst,
       ...(recentEvidence.length > 0 ? { recentEvidence } : {}),
       ...(check !== undefined ? { check } : {}),

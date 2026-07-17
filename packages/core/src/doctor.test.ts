@@ -33,6 +33,26 @@ describe("doctor", () => {
     expect(["ok", "warn"]).toContain(byName(checks, "Distillation").status);
   });
 
+  it("surfaces the undistilled backlog: ingested evidence that never became facts", async () => {
+    // The most likely first-run confusion: ingest worked, nothing appeared.
+    // Doctor must name it with a remedy instead of leaving the loop to look empty.
+    const { Store } = await import("./store.js");
+    const store = new Store(DATABASE_URL);
+    try {
+      await store.insertEvidence({
+        text: `doctor backlog probe ${Date.now()}`,
+        source: "doctor-test/backlog.md",
+      });
+      const checks = await doctor(DATABASE_URL);
+      const backlog = checks.find((c) => c.name === "Backlog");
+      expect(backlog?.status).toBe("warn");
+      expect(backlog?.detail).toMatch(/never distilled/);
+      expect(backlog?.remedy).toMatch(/distill/);
+    } finally {
+      await store.close();
+    }
+  });
+
   it("reports a missing DATABASE_URL as an error, without throwing", async () => {
     const checks = await doctor("");
     expect(byName(checks, "DATABASE_URL").status).toBe("error");

@@ -91,6 +91,7 @@ export async function doctor(
 
   // Distillation readiness: a model must be configured (embeddings are zero-config
   // and run in-process). Missing is a warn, because reads and ingestion still work.
+  let modelConfigured = true;
   try {
     loadProviderConfig();
     checks.push({
@@ -99,12 +100,42 @@ export async function doctor(
       detail: "model configured, embeddings run in-process",
     });
   } catch {
+    modelConfigured = false;
     checks.push({
       name: "Distillation",
       status: "warn",
       detail: "no model configured (reads and ingestion still work)",
       remedy: "Set MARROW_API_KEY (Claude) or MARROW_PROVIDER (a local LLM) to distill.",
     });
+  }
+
+  // The undistilled backlog: evidence that never became facts is the most
+  // likely first-run confusion (ingest worked, nothing appeared). Count it so
+  // the user learns it from doctor instead of from an empty question loop.
+  if (databaseUrl) {
+    const pool = new pg.Pool({ connectionString: databaseUrl });
+    try {
+      const res = await pool.query<{ n: number }>(
+        "select count(*)::int as n from evidence e where not exists (select 1 from provenance p where p.evidence_id = e.id)",
+      );
+      const n = res.rows[0]?.n ?? 0;
+      if (n === 0) {
+        checks.push({ name: "Backlog", status: "ok", detail: "no undistilled evidence" });
+      } else {
+        checks.push({
+          name: "Backlog",
+          status: "warn",
+          detail: `${n} evidence row${n === 1 ? "" : "s"} never distilled into facts`,
+          remedy: modelConfigured
+            ? "Run `marrow distill <evidenceId>` (ids via `marrow evidence`), or re-ingest with distillation on."
+            : "Set MARROW_API_KEY (Claude) or MARROW_PROVIDER (a local LLM), then `marrow distill <evidenceId>`.",
+        });
+      }
+    } catch {
+      // schema missing or unreachable: already reported by the checks above.
+    } finally {
+      await pool.end();
+    }
   }
 
   return checks;

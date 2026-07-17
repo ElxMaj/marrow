@@ -421,6 +421,26 @@ describe("agent decision gate and truth maintenance", () => {
     expect(brief.askHumanFirst.questions.length).toBeLessThanOrEqual(6);
   });
 
+  it("an empty brief never reads as a green light: ask_human_first with the reason", async () => {
+    // Empty brain, or a brain that simply knows nothing about this task:
+    // either way there is nothing to vouch for building. safe_to_build on an
+    // empty brief was the audit's silent-degradation finding.
+    const brief = await core.prepareTask("implement password login");
+    expect(brief.status).toBe("ask_human_first");
+    expect(brief.statusReason).toMatch(/holds nothing about this task/);
+    expect(brief.safeToBuild.facts).toHaveLength(0);
+  });
+
+  it("a brief with decided facts and no open questions still says safe_to_build", async () => {
+    const { question } = await seedPasswordTruth();
+    // settle the one open question so only decided facts remain in scope.
+    await core.answer(question.id, "No, admins use the same magic-link flow");
+    const brief = await core.prepareTask("implement password login");
+    expect(brief.status).toBe("safe_to_build");
+    expect(brief.statusReason).toBeUndefined();
+    expect(brief.safeToBuild.facts.length).toBeGreaterThan(0);
+  });
+
   it("the session buffer surfaces just-appended undistilled evidence, capped and labeled", async () => {
     await seedPasswordTruth();
     // a mid-session write with no distillation: previously invisible to the
