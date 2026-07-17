@@ -30,6 +30,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm smoke:packed
+      # the landing and the demo console must fit a 390px viewport: measured
+      # via a real-iframe probe (direct headless screenshots below ~500px lie
+      # on macOS). pnpm test already built landing/out for check-ids.
+      - run: pnpm mobile:check
       # the published numbers in benchmark/report.json must match the code:
       # regenerate into a temp file and diff the deterministic fields.
       - name: Benchmark drift gate
