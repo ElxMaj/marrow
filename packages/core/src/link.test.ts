@@ -675,6 +675,32 @@ describe("lint catches poisoned evidence in the scheduled sweep", () => {
     expect((await store.getDecision(node.id))?.status).toBe("open");
     expect((await store.getEvidence(ev.id))?.text).toBe(poisoned);
   });
+
+  it("reports out_of_bounds_span for legacy provenance past the evidence text", async () => {
+    const text = "short note";
+    const ev = await store.insertEvidence({ text, source: "room/short.md" });
+    const node = await store.insertDecision({
+      title: "a legacy fact with a broken quote",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: text.length }],
+    });
+    // the store now rejects such spans at insert; forge a pre-guard legacy row
+    // directly, the way old data could still carry one.
+    await admin.query(
+      "insert into provenance (node_id, node_kind, evidence_id, span_start, span_end) values ($1, 'decision', $2, 5, 500)",
+      [node.id, ev.id],
+    );
+
+    const report = await core.lint();
+    const bad = report.issues.find((issue) => issue.kind === "out_of_bounds_span");
+    expect(bad).toBeDefined();
+    expect(bad?.nodeIds).toContain(node.id);
+    expect(bad?.detail).toMatch(/outside evidence/);
+    expect(report.counts.outOfBoundsSpans).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe("dedupe keeps the graph connected", () => {
