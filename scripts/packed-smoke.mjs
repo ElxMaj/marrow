@@ -170,6 +170,11 @@ async function runCliChecks(appDir, databaseUrl) {
     ...process.env,
     DATABASE_URL: databaseUrl,
     MARROW_SECRET_KEY: "packed-smoke-secret",
+    // Keyless cores now wire the local embedder by default; the smoke checks
+    // packaging, not model quality, so it pins lexical-only rather than pull
+    // the one-time model download on every CI run. The embed-degradation path
+    // has its own unit test (search.test.ts).
+    MARROW_LOCAL_EMBEDDINGS: "0",
   };
 
   const loop = await run(marrow, ["loop", "implement password login"], { cwd: appDir, env });
