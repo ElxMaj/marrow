@@ -20,6 +20,9 @@ import { Finale, Footer } from "@/components/sections/finale";
 export default function Page() {
   return (
     <>
+      <a className="skip-link" href="#cover">
+        Skip to content
+      </a>
       <Masthead />
       <RevealField />
       <main>
