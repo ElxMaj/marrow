@@ -150,11 +150,18 @@ function variants(term: string): string[] {
   return [...new Set(out)];
 }
 
-function codeMatchesTerm(codeLower: string, codeWords: Set<string>, term: string): boolean {
-  for (const v of variants(term)) {
-    if (codeWords.has(v) || codeLower.includes(v)) return true;
-  }
-  return false;
+/** Tokenize source into whole identifier words: split camelCase (fooBar ->
+ *  foo bar) first, then the shared tokenizer lowercases and splits on
+ *  non-alphanumerics (snake_case, punctuation). So foo_bar, fooBar and "foo bar"
+ *  all yield the same word set, and a decision term is matched as a whole word,
+ *  never a substring: "sync" no longer matches "async", "test" not "latest",
+ *  "auth" not "author". */
+function codeTokens(code: string): Set<string> {
+  return new Set(words(code.replace(/([a-z0-9])([A-Z])/g, "$1 $2")));
+}
+
+function codeMatchesTerm(codeWords: Set<string>, term: string): boolean {
+  return variants(term).some((v) => codeWords.has(v));
 }
 
 export interface RuleDriftHit {
@@ -171,11 +178,10 @@ export function ruleDriftSignal(
   decision: Pick<Decision, "title" | "rationale">,
 ): RuleDriftHit | undefined {
   const signals = decisionSignals(decision);
-  const codeLower = code.toLowerCase();
-  const codeWords = new Set(words(codeLower));
+  const codeWords = codeTokens(code);
 
   for (const term of signals.negated) {
-    if (codeMatchesTerm(codeLower, codeWords, term)) {
+    if (codeMatchesTerm(codeWords, term)) {
       return { term, kind: "negated", confidence: 0.6 };
     }
   }
@@ -185,7 +191,7 @@ export function ruleDriftSignal(
   // signal and an affirmed term appearing in code is consistency, not drift.
   if (signals.negated.size === 0) {
     for (const term of signals.affirmed) {
-      if (codeMatchesTerm(codeLower, codeWords, term)) {
+      if (codeMatchesTerm(codeWords, term)) {
         return { term, kind: "affirmed", confidence: 0.4 };
       }
     }
@@ -215,13 +221,12 @@ export function goalDriftSignal(
   const text = `${goal.title} ${goal.description ?? ""}`;
   const negated = negatedTerms(text);
   const affirmed = affirmedTerms(text);
-  const codeLower = code.toLowerCase();
-  const codeWords = new Set(words(codeLower));
+  const codeWords = codeTokens(code);
 
   // Code affirming a term the goal negates is the precise contradiction. Below
   // ruleDriftSignal's 0.6 negated confidence.
   for (const term of negated) {
-    if (codeMatchesTerm(codeLower, codeWords, term)) {
+    if (codeMatchesTerm(codeWords, term)) {
       return { term, kind: "negated", confidence: 0.45 };
     }
   }
@@ -230,7 +235,7 @@ export function goalDriftSignal(
   // negates nothing. Below ruleDriftSignal's 0.4 affirmed confidence.
   if (negated.size === 0) {
     for (const term of affirmed) {
-      if (codeMatchesTerm(codeLower, codeWords, term)) {
+      if (codeMatchesTerm(codeWords, term)) {
         return { term, kind: "affirmed", confidence: 0.25 };
       }
     }
@@ -285,8 +290,11 @@ export function decisionsConcerningEntity<T extends Pick<Decision, "title" | "ra
   const terms = [...salientTerms(entity.name)];
   if (terms.length === 0) return [];
   return decisions.filter((decision) => {
-    const text = normalizeTitle(`${decision.title} ${decision.rationale}`);
-    return terms.some((term) => text.includes(term));
+    // whole-word membership, not substring: an entity named "auth" must not
+    // match a decision that merely contains "author", which would forge a
+    // bogus concerns edge and suppress a real gap question.
+    const decWords = new Set(words(`${decision.title} ${decision.rationale}`));
+    return terms.some((term) => decWords.has(term));
   });
 }
 

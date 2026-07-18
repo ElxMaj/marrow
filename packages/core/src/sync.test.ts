@@ -155,6 +155,21 @@ describe("SyncEngine.runConnectorInstance", () => {
     expect(next.sinceCalls[0]?.toISOString()).toBe("2026-01-02T00:00:00.000Z");
   });
 
+  it("holds the cursor at the prior watermark on an idle run, never jumping to wall clock", async () => {
+    const engine = new SyncEngine({ store });
+    await engine.runConnectorInstance(
+      "fake",
+      new FakeConnector([stamped("fake:a", "2026-01-02T00:00:00.000Z")]),
+    );
+    expect((await store.getConnectorState("fake"))?.cursor).toBe("2026-01-02T00:00:00.000Z");
+
+    // an idle run (no new items, so no watermark this run) must retain the prior
+    // cursor. Before the fix it fell back to ranAt (now), skipping any item that
+    // was posted before the watermark but only became visible after this run.
+    await engine.runConnectorInstance("fake", new FakeConnector([]));
+    expect((await store.getConnectorState("fake"))?.cursor).toBe("2026-01-02T00:00:00.000Z");
+  });
+
   it("advances the watermark past items skipped by dedup, so it never re-fetches forever", async () => {
     const engine = new SyncEngine({ store });
     const items = [stamped("fake:a", "2026-03-01T00:00:00.000Z")];

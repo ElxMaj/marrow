@@ -1183,6 +1183,18 @@ export class Store {
         canonicalId,
       ]);
     }
+    // a goal's entity_id is a real foreign key (goal serves an entity). when the
+    // entity being removed is referenced by a goal, re-point the goal to the
+    // canonical entity, or detach it when the entity is going away entirely, so
+    // the delete below does not trip the FK and roll back the whole merge.
+    if (nodeKind === "entity") {
+      await client.query(
+        canonicalId !== undefined
+          ? "update goal set entity_id = $2 where entity_id = $1"
+          : "update goal set entity_id = null where entity_id = $1",
+        canonicalId !== undefined ? [nodeId, canonicalId] : [nodeId],
+      );
+    }
     // whatever still points at the node (un-repointable duplicates, self-loop
     // candidates, or everything when there is no canonical) goes with it.
     await client.query("delete from edge where from_id = $1 or to_id = $1", [nodeId]);

@@ -136,6 +136,10 @@ function parseVtt(raw: string): RawTurn[] {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const turns: RawTurn[] = [];
   let skipBlock = false;
+  // true once a cue's timing line has been seen, until the next blank: the lines
+  // that follow are spoken payload, so a payload line that happens to begin with
+  // NOTE/STYLE/WEBVTT is text, not a comment block, and must not be dropped.
+  let inCue = false;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? "";
@@ -144,18 +148,26 @@ function parseVtt(raw: string): RawTurn[] {
 
     if (trimmed === "") {
       skipBlock = false;
+      inCue = false;
       continue;
     }
-    // header and NOTE/STYLE blocks: skip to the next blank line.
-    if (trimmed.startsWith("WEBVTT") || trimmed.startsWith("NOTE") || trimmed.startsWith("STYLE")) {
+    // header and NOTE/STYLE blocks: skip to the next blank line, but only
+    // between cues, never inside a cue's spoken payload.
+    if (
+      !inCue &&
+      (trimmed.startsWith("WEBVTT") || trimmed.startsWith("NOTE") || trimmed.startsWith("STYLE"))
+    ) {
       skipBlock = true;
     }
     if (skipBlock) continue;
-    // cue timing line: skip.
-    if (trimmed.includes("-->")) continue;
+    // cue timing line: skip it and enter the cue's payload.
+    if (trimmed.includes("-->")) {
+      inCue = true;
+      continue;
+    }
     // a bare numeric or identifier line that is the cue id, when the next line
-    // is the timing line: skip it.
-    if (/^[\w-]+$/.test(trimmed) && (lines[i] ?? "").includes("-->")) continue;
+    // is the timing line: skip it (only before the cue's payload begins).
+    if (!inCue && /^[\w-]+$/.test(trimmed) && (lines[i] ?? "").includes("-->")) continue;
 
     const { speaker, text } = extractVttLine(line);
     if (cleanText(text) !== "") turns.push({ speaker, text });

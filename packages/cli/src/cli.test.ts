@@ -300,6 +300,12 @@ describe("cli", () => {
     expect(rendered).toContain("concerns");
 
     await expect(runCommand(core, ["neighbors"])).rejects.toThrow(/Usage: marrow neighbors/);
+
+    // --hops is a value flag: when it precedes the node id, the parser must skip
+    // its value and still find the real id, not read "2" as the node id.
+    const withHops = formatResult(await runCommand(core, ["neighbors", "--hops", "2", ent.id]));
+    expect(withHops).toContain("Neighbors of checkout");
+    expect(withHops).toContain("one-click checkout");
   });
 
   it("map renders the front-door index with degrees, most connected first", async () => {

@@ -499,7 +499,7 @@ async function handle(
       ...(kind ? { kind } : {}),
       ...(status ? { status } : {}),
       ...(before ? { before } : {}),
-      ...(limit && Number.isFinite(limit) ? { limit } : {}),
+      ...(limit !== undefined && Number.isInteger(limit) && limit > 0 ? { limit } : {}),
     });
     return send(res, 200, runs);
   }
@@ -578,7 +578,10 @@ async function handle(
     return send(
       res,
       200,
-      await recentEvidence(store, limit && Number.isFinite(limit) ? limit : 30),
+      await recentEvidence(
+        store,
+        limit !== undefined && Number.isInteger(limit) && limit > 0 ? limit : 30,
+      ),
     );
   }
   if (path === "/api/ingest" && req.method === "POST") {

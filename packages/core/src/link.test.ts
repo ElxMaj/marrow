@@ -235,6 +235,25 @@ describe("edge extraction (the knowledge graph)", () => {
     expect(matches[0]?.title).toBe("checkout uses one-click");
   });
 
+  it("decisionsConcerningEntity matches whole words, not substrings", () => {
+    // 'auth' must not match 'author'/'authorize'; whole-word membership only.
+    const matches = decisionsConcerningEntity({ name: "auth" }, [
+      { title: "the author owns the doc", rationale: "authorize the editor" },
+      { title: "auth uses passkeys", rationale: "" },
+    ]);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.title).toBe("auth uses passkeys");
+  });
+
+  it("ruleDriftSignal matches identifier words, not substrings (sync not async)", () => {
+    const decision = { title: "no sync writes on the render path", rationale: "" };
+    // 'async function' must NOT trip the negated 'sync' term...
+    expect(ruleDriftSignal("async function render() {}", decision)).toBeUndefined();
+    // ...but a real sync identifier (camelCase or snake_case) still does.
+    expect(ruleDriftSignal("await syncWrites(doc)", decision)?.term).toBe("sync");
+    expect(ruleDriftSignal("sync_writes(doc)", decision)?.term).toBe("sync");
+  });
+
   it("writes a concerns edge from an entity to a decision about it, status unchanged", async () => {
     const ev = await store.insertEvidence({
       text: "checkout should be one click",
