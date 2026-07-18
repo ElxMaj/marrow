@@ -1680,23 +1680,28 @@ h2 {
 /* ================================================================
    OVERVIEW
    ================================================================ */
-.stat-grid {
+/* At a glance is a hero plus a supporting list, not four equal cards. The
+   brain's headline number is how much decided truth it holds, so `decided`
+   is the one primary; open / entities / items are a hairline-ruled column
+   beside it. Hierarchy comes from size and register, never from a second
+   accent or a card-grid. */
+.stat-band {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   gap: var(--sp-4);
   margin-bottom: var(--sp-6);
 }
 @media (max-width: 760px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .stat-band {
+    grid-template-columns: 1fr;
   }
 }
-.stat-card {
-  position: relative;
+.stat-hero {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  justify-content: center;
+  gap: 4px;
   padding: var(--sp-5);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1711,49 +1716,93 @@ h2 {
     transform var(--dur) var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .stat-card:hover {
+  .stat-hero:hover {
     border-color: var(--line-strong);
     background: var(--surface-3);
     transform: translateY(-1px);
   }
 }
-.stat-card:active {
+.stat-hero:active {
   transform: scale(0.99);
-}
-.stat-card.accent::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 14px;
-  bottom: 14px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--accent);
 }
 /* big metrics are sans lining figures: the mono face's slashed zero reads as
    the empty-set glyph at hero size. mono stays the evidence voice (ids, spans). */
-.stat-num {
+.stat-hero-num {
   font-family: var(--font-sans);
-  font-size: 30px;
+  font-size: 46px;
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--decided);
+}
+.stat-hero-label {
+  font-size: var(--fs-dense);
+  font-weight: var(--fw-label);
+  color: var(--ink);
+  text-transform: lowercase;
+}
+.stat-hero-foot {
+  margin-top: 2px;
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+  max-width: 22ch;
+}
+.stat-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.stat-list > li + li .stat-line {
+  border-top: 1px solid var(--line);
+}
+.stat-line {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  align-items: baseline;
+  column-gap: var(--sp-3);
+  row-gap: 1px;
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background-color var(--dur) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .stat-line:hover {
+    background: var(--surface-3);
+  }
+}
+.stat-line-num {
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-family: var(--font-sans);
+  font-size: 24px;
   font-weight: var(--fw-title);
   font-variant-numeric: tabular-nums lining-nums;
   letter-spacing: -0.01em;
   line-height: 1.1;
   color: var(--ink);
 }
-.stat-card.decided .stat-num {
-  color: var(--decided);
-}
-.stat-card.open .stat-num {
+.stat-line-num.open {
   color: var(--open);
 }
-.stat-label {
+.stat-line-label {
   font-size: var(--fs-dense);
   font-weight: var(--fw-label);
   color: var(--ink);
   text-transform: lowercase;
 }
-.stat-foot {
+.stat-line-foot {
   font-size: var(--fs-micro);
   color: var(--ink-faint);
 }
@@ -3013,7 +3062,8 @@ h2 {
     animation: none;
   }
   .toggle .toggle-knob,
-  .stat-card {
+  .stat-hero,
+  .stat-line {
     transition: none;
   }
 }
