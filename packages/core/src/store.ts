@@ -40,6 +40,11 @@ const { Pool } = pg;
 // space (second key = hashtext(name)) cannot collide with another lock usage.
 const CONNECTOR_LOCK_NS = 19794; // "MR", for Marrow
 
+// A separate namespace for the per-evidence distill lock, so a distill lock
+// (second key = hashtext(evidenceId)) can never collide with a connector lock
+// that happens to hash a name to the same second key.
+const DISTILL_LOCK_NS = 19795;
+
 // Draft inputs. The Store generates id, createdAt and updatedAt and sets kind,
 // so callers pass only the fields they own. Every distilled draft must carry
 // provenance: there is no path to a node without a source span.
@@ -1990,6 +1995,38 @@ export class Store {
         await client.query("select pg_advisory_unlock($1, hashtext($2))", [
           CONNECTOR_LOCK_NS,
           name,
+        ]);
+      } finally {
+        client.release();
+      }
+    }
+  }
+
+  /**
+   * Run fn while holding a session advisory lock scoped to one evidence row, so
+   * two distills of the same evidence cannot race the check-then-insert dedup
+   * into duplicate distilled nodes. distill() builds its `seen` set from an
+   * in-memory read of the existing nodes, and each insert mints a fresh UUID, so
+   * nothing at the DB layer stops two concurrent passes (a scheduled `distill
+   * --pending` overlapping a manual distill) from each inserting the full node
+   * set. This lock serializes them: the second pass blocks, then reads the
+   * now-present nodes and skips them. Advisory and cooperative like the connector
+   * lock; a different evidence id takes a different lock, so distinct distills
+   * still run in parallel. Released even if fn throws.
+   */
+  async withDistillLock<T>(evidenceId: string, fn: () => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("select pg_advisory_lock($1, hashtext($2))", [
+        DISTILL_LOCK_NS,
+        evidenceId,
+      ]);
+      return await fn();
+    } finally {
+      try {
+        await client.query("select pg_advisory_unlock($1, hashtext($2))", [
+          DISTILL_LOCK_NS,
+          evidenceId,
         ]);
       } finally {
         client.release();

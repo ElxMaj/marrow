@@ -241,7 +241,15 @@ export class SyncEngine {
       for (const draft of drafts) {
         // a skipped item still advances the watermark, so a boundary item that
         // dedup keeps re-delivering does not pin the cursor in the past forever.
-        if (draft.timestamp && (!watermark || draft.timestamp > watermark)) {
+        // an unparseable source date (new Date("") -> Invalid Date) is truthy but
+        // NaN-valued: treated as valid it would pin the watermark forever (no real
+        // date can exceed NaN) and then crash the unguarded toISOString() below,
+        // wedging the connector on every run. Reject it like a missing timestamp.
+        if (
+          draft.timestamp &&
+          !Number.isNaN(draft.timestamp.getTime()) &&
+          (!watermark || draft.timestamp > watermark)
+        ) {
           watermark = draft.timestamp;
         }
         // evidence is append only: dedup is a skip, never an update.

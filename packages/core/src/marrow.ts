@@ -567,140 +567,145 @@ export class Marrow {
     if (!evidence) throw new Error(`distill: evidence ${evidenceId} not found`);
     const model = this.model;
 
-    // wrap the whole pass in one observability run: latency, the model used,
-    // real token usage when the provider reports it, and the node count. a
-    // failing distill records an error run and rethrows.
-    return traced(this.store, { kind: "distill", label: evidence.source }, async (report) => {
-      const existing = await this.store.getNodesForEvidence(evidenceId);
-      const seen = new Set(existing.map((node) => nodeKey(node, evidenceId)));
-      const created: Distilled[] = [];
-      let tokensIn = 0;
-      let tokensOut = 0;
-      let hasUsage = false;
+    // serialize distills of the SAME evidence: the `seen` dedup set is built from
+    // an in-memory read, so two concurrent passes would both read empty and each
+    // insert the full node set. The lock keys on evidenceId, so distinct evidence
+    // still distills in parallel. wrap the whole pass in one observability run:
+    // latency, the model used, real token usage when the provider reports it, and
+    // the node count. a failing distill records an error run and rethrows.
+    return this.store.withDistillLock(evidenceId, () =>
+      traced(this.store, { kind: "distill", label: evidence.source }, async (report) => {
+        const existing = await this.store.getNodesForEvidence(evidenceId);
+        const seen = new Set(existing.map((node) => nodeKey(node, evidenceId)));
+        const created: Distilled[] = [];
+        let tokensIn = 0;
+        let tokensOut = 0;
+        let hasUsage = false;
 
-      const confidenceOf = (value: number | undefined) =>
-        ({ value: value ?? 0.6, source: "model" }) as const;
+        const confidenceOf = (value: number | undefined) =>
+          ({ value: value ?? 0.6, source: "model" }) as const;
 
-      // the extraction policy: a soft prompt clause plus a deterministic
-      // post-extraction filter. The filter is the guarantee; the clause just
-      // saves tokens by asking the model not to bother.
-      const policy = loadPolicy();
-      const clause = policyPromptClause(policy);
-      const system = clause.length > 0 ? `${DISTILL_SYSTEM}\n${clause}` : DISTILL_SYSTEM;
-      let policyDrops = 0;
+        // the extraction policy: a soft prompt clause plus a deterministic
+        // post-extraction filter. The filter is the guarantee; the clause just
+        // saves tokens by asking the model not to bother.
+        const policy = loadPolicy();
+        const clause = policyPromptClause(policy);
+        const system = clause.length > 0 ? `${DISTILL_SYSTEM}\n${clause}` : DISTILL_SYSTEM;
+        let policyDrops = 0;
 
-      // one model call per chunk; every quote is resolved back into the FULL
-      // evidence text, so spans stay correct no matter where a chunk boundary fell.
-      for (const chunk of chunkText(evidence.text, DISTILL_CHUNK_CHARS)) {
-        const opts = {
-          system,
-          temperature: 0,
-          maxTokens: DISTILL_MAX_TOKENS,
-        };
-        let raw: string;
-        if (model.completeDetailed) {
-          const completion = await model.completeDetailed(buildDistillPrompt(chunk), opts);
-          raw = completion.text;
-          if (completion.usage) {
-            tokensIn += completion.usage.inputTokens;
-            tokensOut += completion.usage.outputTokens;
-            hasUsage = true;
+        // one model call per chunk; every quote is resolved back into the FULL
+        // evidence text, so spans stay correct no matter where a chunk boundary fell.
+        for (const chunk of chunkText(evidence.text, DISTILL_CHUNK_CHARS)) {
+          const opts = {
+            system,
+            temperature: 0,
+            maxTokens: DISTILL_MAX_TOKENS,
+          };
+          let raw: string;
+          if (model.completeDetailed) {
+            const completion = await model.completeDetailed(buildDistillPrompt(chunk), opts);
+            raw = completion.text;
+            if (completion.usage) {
+              tokensIn += completion.usage.inputTokens;
+              tokensOut += completion.usage.outputTokens;
+              hasUsage = true;
+            }
+          } else {
+            raw = await model.complete(buildDistillPrompt(chunk), opts);
           }
-        } else {
-          raw = await model.complete(buildDistillPrompt(chunk), opts);
-        }
-        const parsed = parseExtraction(raw);
-        const filtered = filterExtraction(parsed, policy);
-        policyDrops += filtered.dropped;
-        const extraction = filtered.extraction;
+          const parsed = parseExtraction(raw);
+          const filtered = filterExtraction(parsed, policy);
+          policyDrops += filtered.dropped;
+          const extraction = filtered.extraction;
 
-        for (const entity of extraction.entities) {
-          const span = resolveSpan(evidence.text, entity);
-          if (!span) continue;
-          const key = distilledKey("entity", entity.name, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertEntity({
-            name: entity.name,
-            ...(entity.description !== undefined ? { description: entity.description } : {}),
-            status: "open",
-            confidence: confidenceOf(entity.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "entity", entity.name);
-          created.push(node);
+          for (const entity of extraction.entities) {
+            const span = resolveSpan(evidence.text, entity);
+            if (!span) continue;
+            const key = distilledKey("entity", entity.name, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertEntity({
+              name: entity.name,
+              ...(entity.description !== undefined ? { description: entity.description } : {}),
+              status: "open",
+              confidence: confidenceOf(entity.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "entity", entity.name);
+            created.push(node);
+          }
+
+          for (const decision of extraction.decisions) {
+            const span = resolveSpan(evidence.text, decision);
+            if (!span) continue;
+            const key = distilledKey("decision", decision.title, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertDecision({
+              title: decision.title,
+              rationale: decision.rationale ?? "",
+              constraint: decision.constraint ?? false,
+              status: "open",
+              confidence: confidenceOf(decision.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(
+              node.id,
+              "decision",
+              `${decision.title} ${decision.rationale ?? ""}`,
+            );
+            created.push(node);
+          }
+
+          for (const goal of extraction.goals) {
+            const span = resolveSpan(evidence.text, goal);
+            if (!span) continue;
+            const key = distilledKey("goal", goal.title, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertGoal({
+              title: goal.title,
+              ...(goal.description !== undefined ? { description: goal.description } : {}),
+              goalType: goal.goalType,
+              status: "open",
+              confidence: confidenceOf(goal.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "goal", `${goal.title} ${goal.description ?? ""}`);
+            created.push(node);
+          }
+
+          for (const question of extraction.questions) {
+            const span = resolveSpan(evidence.text, question);
+            if (!span) continue;
+            const key = distilledKey("question", question.prompt, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertQuestion({
+              prompt: question.prompt,
+              status: "open",
+              confidence: confidenceOf(question.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "question", question.prompt);
+            created.push(node);
+          }
         }
 
-        for (const decision of extraction.decisions) {
-          const span = resolveSpan(evidence.text, decision);
-          if (!span) continue;
-          const key = distilledKey("decision", decision.title, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertDecision({
-            title: decision.title,
-            rationale: decision.rationale ?? "",
-            constraint: decision.constraint ?? false,
-            status: "open",
-            confidence: confidenceOf(decision.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(
-            node.id,
-            "decision",
-            `${decision.title} ${decision.rationale ?? ""}`,
-          );
-          created.push(node);
-        }
-
-        for (const goal of extraction.goals) {
-          const span = resolveSpan(evidence.text, goal);
-          if (!span) continue;
-          const key = distilledKey("goal", goal.title, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertGoal({
-            title: goal.title,
-            ...(goal.description !== undefined ? { description: goal.description } : {}),
-            goalType: goal.goalType,
-            status: "open",
-            confidence: confidenceOf(goal.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "goal", `${goal.title} ${goal.description ?? ""}`);
-          created.push(node);
-        }
-
-        for (const question of extraction.questions) {
-          const span = resolveSpan(evidence.text, question);
-          if (!span) continue;
-          const key = distilledKey("question", question.prompt, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertQuestion({
-            prompt: question.prompt,
-            status: "open",
-            confidence: confidenceOf(question.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "question", question.prompt);
-          created.push(node);
-        }
-      }
-
-      report({
-        model: model.model,
-        ...(hasUsage ? { tokensIn, tokensOut } : {}),
-        inputSummary: `${evidence.text.length} chars`,
-        outputSummary: `${created.length} new node${created.length === 1 ? "" : "s"}`,
-        metadata: {
-          evidenceId,
-          newNodes: created.length,
-          ...(policyDrops > 0 ? { policyDrops } : {}),
-        },
-      });
-      return [...existing, ...created];
-    });
+        report({
+          model: model.model,
+          ...(hasUsage ? { tokensIn, tokensOut } : {}),
+          inputSummary: `${evidence.text.length} chars`,
+          outputSummary: `${created.length} new node${created.length === 1 ? "" : "s"}`,
+          metadata: {
+            evidenceId,
+            newNodes: created.length,
+            ...(policyDrops > 0 ? { policyDrops } : {}),
+          },
+        });
+        return [...existing, ...created];
+      }),
+    );
   }
 
   /** Ingest, distill, then reconcile against the graph synchronously, so the
