@@ -8,6 +8,7 @@ import {
   loadPolicy,
   matchesNoDistillSource,
   normalizeTranscript,
+  renderTruthHtml,
   scrubEnabled,
   scrubSecrets,
 } from "@marrowhq/core";
@@ -256,7 +257,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
 Bootstrap / maintain:
   loop "<task>" [--check] [--staged|--unstaged|--since <ref>] [--no-semantic]
                               Prepare a compact agent brief for one task
-  truth                       Show the product truth maintenance brief
+  truth [--html]              Show the product truth maintenance brief (--html for the morning-read artifact)
   verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
   lint                        Sweep the graph for duplicates, contradictions, dead edges, and instruction smells
   synthesize [--days N]       What changed and what deserves attention over a window (default 7d)
@@ -329,6 +330,7 @@ const COMMAND_EXAMPLES: Record<string, string[]> = {
   drift: ["marrow drift --unstaged", "marrow drift --ci"],
   loop: ['marrow loop "implement password login" --check --unstaged'],
   graph: ["marrow graph", "marrow graph dec_1a2b --depth 2"],
+  truth: ["marrow truth", "marrow truth --html > brief.html"],
   runs: ["marrow runs --kind drift --status error", "marrow runs --limit 20"],
   distill: ["marrow distill ev_1a2b", "marrow distill --pending --limit 100"],
   retract: ['marrow retract dec_1a2b --reason "never actually decided"'],
@@ -511,8 +513,21 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       });
     }
 
-    case "truth":
-      return core.maintainTruth();
+    case "truth": {
+      const brief = await core.maintainTruth();
+      // --html renders the brief as a self-contained artifact a cron job can
+      // write to a file or email: the morning read, in the console's language.
+      if (rest.includes("--html")) {
+        const now = Date.now();
+        const consoleUrl = process.env.MARROW_CONSOLE_URL;
+        return renderTruthHtml(brief, {
+          now,
+          generatedAt: `${new Date(now).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+          ...(consoleUrl ? { consoleUrl } : {}),
+        });
+      }
+      return brief;
+    }
 
     case "verify":
       return core.verify();
@@ -977,6 +992,9 @@ function formatUndistilledBacklog(
 }
 
 export function formatResult(result: unknown): string {
+  // a command may return a pre-rendered string (e.g. `truth --html`); print it
+  // verbatim rather than JSON-quoting it.
+  if (typeof result === "string") return result;
   if (!result || typeof result !== "object") return JSON.stringify(result, null, 2);
   const r = result as Record<string, unknown>;
 
