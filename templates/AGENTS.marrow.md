@@ -9,7 +9,7 @@ New to Marrow? The Non-Negotiables below plus `marrow loop "<task>"` (or the `pr
 - Never infer product truth from the codebase alone.
 - Never dump the whole brain into context.
 - Every product fact you rely on must have status, confidence, and provenance.
-- Treat decided facts as buildable.
+- Treat decided facts as buildable, unless the brief flags one `stale`. A stale fact was stood behind long enough ago that it may no longer hold; confirm it with the human before you build on it.
 - Treat open or contested facts as a stop sign.
 - Agents may propose. Humans promote.
 
@@ -29,8 +29,11 @@ Read the brief this way:
 - `askHumanFirst.questions`: open questions the human must answer first
 - `askHumanFirst.contestedFacts`: facts that conflict or need resolution
 - `provenance`: exact source spans for every fact
+- `verifiedAt` and `stale`: when a human last stood behind a fact, and whether it is now past its freshness window. A `stale` fact inside `safeToBuild` is a soft stop: confirm it before building.
 
 If `status` is `ask_human_first`, pause and ask the human. Do not smooth over the conflict.
+
+To see what the brain holds without pulling facts into context, use the bounded front door. `marrow map` lists what exists (ids, kinds, titles, status, and how connected each node is); `marrow neighbors <id>` walks the graph one or two hops around a single node. Both are capped and never return the whole brain. Over MCP these are `get_index` and `get_neighbors`.
 
 ## While You Code
 
