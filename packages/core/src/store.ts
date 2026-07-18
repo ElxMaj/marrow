@@ -275,6 +275,7 @@ interface DistilledRow {
   status: string;
   confidence_value: number;
   confidence_source: string;
+  decided_by: string | null;
   created_at: Date;
   updated_at: Date;
   verified_at: Date | null;
@@ -426,8 +427,8 @@ export class Store {
     const ts = new Date().toISOString();
     return this.tx(async (client) => {
       await client.query(
-        `insert into entity (id, name, description, status, confidence_value, confidence_source, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        `insert into entity (id, name, description, status, confidence_value, confidence_source, decided_by, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
         [
           id,
           draft.name,
@@ -435,6 +436,7 @@ export class Store {
           draft.status,
           draft.confidence.value,
           draft.confidence.source,
+          draft.confidence.decidedBy ?? null,
           ts,
         ],
       );
@@ -460,8 +462,8 @@ export class Store {
     const ts = new Date().toISOString();
     return this.tx(async (client) => {
       await client.query(
-        `insert into decision (id, title, rationale, is_constraint, status, confidence_value, confidence_source, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+        `insert into decision (id, title, rationale, is_constraint, status, confidence_value, confidence_source, decided_by, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
         [
           id,
           draft.title,
@@ -470,6 +472,7 @@ export class Store {
           draft.status,
           draft.confidence.value,
           draft.confidence.source,
+          draft.confidence.decidedBy ?? null,
           ts,
         ],
       );
@@ -497,8 +500,8 @@ export class Store {
     const relatesTo = draft.relatesTo ?? [];
     return this.tx(async (client) => {
       await client.query(
-        `insert into question (id, prompt, relates_to, status, confidence_value, confidence_source, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        `insert into question (id, prompt, relates_to, status, confidence_value, confidence_source, decided_by, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
         [
           id,
           draft.prompt,
@@ -506,6 +509,7 @@ export class Store {
           draft.status,
           draft.confidence.value,
           draft.confidence.source,
+          draft.confidence.decidedBy ?? null,
           ts,
         ],
       );
@@ -531,8 +535,8 @@ export class Store {
     const ts = new Date().toISOString();
     return this.tx(async (client) => {
       await client.query(
-        `insert into goal (id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+        `insert into goal (id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, decided_by, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
         [
           id,
           draft.title,
@@ -542,6 +546,7 @@ export class Store {
           draft.status,
           draft.confidence.value,
           draft.confidence.source,
+          draft.confidence.decidedBy ?? null,
           ts,
         ],
       );
@@ -567,7 +572,7 @@ export class Store {
     const res = await this.pool.query<
       DistilledRow & { title: string; rationale: string; is_constraint: boolean }
     >(
-      `select id, title, rationale, is_constraint, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
+      `select id, title, rationale, is_constraint, status, confidence_value, confidence_source, decided_by, created_at, updated_at, verified_at, expires_at
        from decision where id = $1`,
       [id],
     );
@@ -586,7 +591,7 @@ export class Store {
 
   async getEntity(id: string): Promise<Entity | undefined> {
     const res = await this.pool.query<DistilledRow & { name: string; description: string | null }>(
-      `select id, name, description, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
+      `select id, name, description, status, confidence_value, confidence_source, decided_by, created_at, updated_at, verified_at, expires_at
        from entity where id = $1`,
       [id],
     );
@@ -604,7 +609,7 @@ export class Store {
 
   async getQuestion(id: string): Promise<Question | undefined> {
     const res = await this.pool.query<DistilledRow & { prompt: string; relates_to: string[] }>(
-      `select id, prompt, relates_to, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
+      `select id, prompt, relates_to, status, confidence_value, confidence_source, decided_by, created_at, updated_at, verified_at, expires_at
        from question where id = $1`,
       [id],
     );
@@ -629,7 +634,7 @@ export class Store {
         entity_id: string | null;
       }
     >(
-      `select id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, created_at, updated_at, verified_at, expires_at
+      `select id, title, description, goal_type, entity_id, status, confidence_value, confidence_source, decided_by, created_at, updated_at, verified_at, expires_at
        from goal where id = $1`,
       [id],
     );
@@ -859,12 +864,14 @@ export class Store {
     nodeId: string,
     nodeKind: DistilledKind,
     span: ProvenanceSpan,
+    decidedBy?: string,
   ): Promise<void> {
     const table = tableForKind(nodeKind);
     const now = new Date().toISOString();
     // verified_at is the promotion timestamp: a human stood behind this, and when.
     // expires_at is set only when a brain-level TTL is configured, so freshness is
-    // opt-in; confidence is never decayed in place.
+    // opt-in; confidence is never decayed in place. decided_by names that human,
+    // written once here at the moment of promotion.
     const ttlDays = Number(process.env.MARROW_FACT_TTL_DAYS);
     const expiresAt =
       Number.isFinite(ttlDays) && ttlDays > 0
@@ -872,8 +879,8 @@ export class Store {
         : null;
     await this.tx(async (client) => {
       await client.query(
-        `update ${table} set status = 'decided', confidence_source = 'human', confidence_value = 1, updated_at = $2, verified_at = $2, expires_at = $3 where id = $1`,
-        [nodeId, now, expiresAt],
+        `update ${table} set status = 'decided', confidence_source = 'human', confidence_value = 1, decided_by = $4, updated_at = $2, verified_at = $2, expires_at = $3 where id = $1`,
+        [nodeId, now, expiresAt, decidedBy ?? null],
       );
       await this.insertProvenance(client, nodeId, nodeKind, [span]);
     });
@@ -1928,6 +1935,7 @@ export class Store {
       confidence: {
         value: row.confidence_value,
         source: row.confidence_source as "model" | "human",
+        ...(row.decided_by ? { decidedBy: row.decided_by } : {}),
       },
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),

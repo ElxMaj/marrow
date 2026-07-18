@@ -1,3 +1,5 @@
+import { userInfo } from "node:os";
+
 import {
   type ConnectorConfigRecord,
   type ConnectorSummary,
@@ -1098,12 +1100,17 @@ export class Marrow {
             truncated: true,
           },
     );
+    // The decider is human-accountability metadata, not agent context: an agent
+    // builds against decided-vs-open and provenance, never against who signed
+    // off. Keeping it out of the token-scoped brief also keeps the brief lean
+    // and the benchmark deterministic (the OS-user fallback never leaks in).
+    const { decidedBy: _decidedBy, ...briefConfidence } = node.confidence;
     return {
       id: node.id,
       kind: node.kind,
       title: nodeTitle(node),
       status: node.status,
-      confidence: node.confidence,
+      confidence: briefConfidence,
       provenance: clamped,
       ...(node.verifiedAt !== undefined ? { verifiedAt: node.verifiedAt } : {}),
       ...(isFactStale(node) ? { stale: true } : {}),
@@ -1751,7 +1758,7 @@ export class Marrow {
    * addressed), and writes a catch_acted_on event. The related decision stays
    * decided; the action is the human's record of what they did about the drift.
    */
-  async acceptCatch(questionId: string, resolution: string): Promise<Question> {
+  async acceptCatch(questionId: string, resolution: string, decidedBy?: string): Promise<Question> {
     if (!resolution || resolution.trim().length === 0) {
       throw new Error("accept: a resolution is required");
     }
@@ -1762,7 +1769,7 @@ export class Marrow {
       source: `resolutions/${questionId}`,
     });
     const span = { evidenceId: evidence.id, start: 0, end: resolution.length };
-    await this.store.promoteToDecided(questionId, "question", span);
+    await this.store.promoteToDecided(questionId, "question", span, resolveDecider(decidedBy));
 
     await this.store.insertCatchEvent({
       eventType: "catch_acted_on",
@@ -2425,19 +2432,21 @@ export class Marrow {
     goalType: "product" | "user";
     entityId?: string;
     source?: string;
+    decidedBy?: string;
   }): Promise<Goal> {
     const text = input.description ? `${input.title}\n${input.description}` : input.title;
     const evidence = await this.store.insertEvidence({
       text,
       source: input.source ?? "goals/console",
     });
+    const decidedBy = resolveDecider(input.decidedBy);
     const goal = await this.store.insertGoal({
       title: input.title,
       ...(input.description !== undefined ? { description: input.description } : {}),
       goalType: input.goalType,
       ...(input.entityId !== undefined ? { entityId: input.entityId } : {}),
       status: "decided",
-      confidence: { value: 1, source: "human" },
+      confidence: { value: 1, source: "human", ...(decidedBy ? { decidedBy } : {}) },
       provenance: [{ evidenceId: evidence.id, start: 0, end: text.length }],
     });
     await this.embedNode(goal.id, "goal", `${input.title} ${input.description ?? ""}`);
@@ -2479,7 +2488,7 @@ export class Marrow {
   async answer(
     questionId: string,
     text: string,
-    opts: { decide?: string } = {},
+    opts: { decide?: string; decidedBy?: string } = {},
   ): Promise<{ promoted: Distilled[]; superseded: Distilled[] }> {
     const question = await this.store.getQuestion(questionId);
     if (!question) throw new Error(`answer: question ${questionId} not found`);
@@ -2522,9 +2531,10 @@ export class Marrow {
     const evidence = await this.store.insertEvidence({ text, source: `answers/${questionId}` });
     const span = { evidenceId: evidence.id, start: 0, end: text.length };
 
+    const decidedBy = resolveDecider(opts.decidedBy);
     const promoted: Distilled[] = [];
     for (const node of toPromote) {
-      await this.store.promoteToDecided(node.id, node.kind, span);
+      await this.store.promoteToDecided(node.id, node.kind, span, decidedBy);
       const updated = await this.store.getNode(node.id);
       if (updated) promoted.push(updated);
     }
@@ -2685,6 +2695,32 @@ export class Marrow {
 
   async close(): Promise<void> {
     await this.store.close();
+  }
+}
+
+/** The human behind a promote, so a team can tell whose judgment a fact carries.
+ *  Precedence: an explicit value (the CLI --as flag or the web session) wins,
+ *  else MARROW_USER, else the OS login name, else undefined (a solo local tool
+ *  that never set an identity leaves the fact unattributed rather than guessing).
+ *  Trimmed and length-capped to match the spine's decidedBy bound. */
+export function resolveDecider(
+  explicit?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const raw = explicit ?? env.MARROW_USER ?? osUserName();
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, 120);
+}
+
+function osUserName(): string | undefined {
+  try {
+    const name = userInfo().username;
+    // container/CI users are literally "root" or "node"; those are not a
+    // meaningful decider, so treat them as unset.
+    return name && name !== "root" && name !== "node" ? name : undefined;
+  } catch {
+    return undefined;
   }
 }
 

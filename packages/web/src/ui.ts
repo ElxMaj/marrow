@@ -49,6 +49,8 @@ export interface Provenance {
 export interface Confidence {
   value: number;
   source: "model" | "human";
+  /** the human who promoted this fact, present only on human-decided facts. */
+  decidedBy?: string;
 }
 export interface Decision {
   id: string;

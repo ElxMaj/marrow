@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { Marrow } from "./marrow.js";
+import { Marrow, resolveDecider } from "./marrow.js";
 import { questionImpact } from "./loop.js";
 import {
   type EmbeddingProvider,
@@ -274,6 +274,31 @@ describe("question loop", () => {
     const others = (await core.getDecisions()).filter((d) => d.id !== newDecisionId);
     expect(others.length).toBeGreaterThan(0);
     expect(others.every((d) => d.status === "superseded")).toBe(true);
+  });
+
+  it("records the named human on a promote, and reads it back", async () => {
+    const { questionId, newDecisionId } = await seedConflict();
+    await core.answer(questionId, "magic links win", { decide: newDecisionId, decidedBy: "priya" });
+    const chosen = await core.getDecision(newDecisionId);
+    expect(chosen?.confidence.source).toBe("human");
+    expect(chosen?.confidence.decidedBy).toBe("priya");
+    // a model-proposed fact never carries a decider.
+    const proposed = await core.proposeNode({
+      kind: "decision",
+      title: "an open proposal",
+      provenance: chosen?.provenance ?? [],
+    });
+    expect(proposed.confidence.decidedBy).toBeUndefined();
+  });
+
+  it("resolveDecider follows explicit > MARROW_USER > OS, and ignores container users", () => {
+    expect(resolveDecider("priya", { MARROW_USER: "marco" })).toBe("priya");
+    expect(resolveDecider(undefined, { MARROW_USER: "marco" })).toBe("marco");
+    expect(resolveDecider("  spaced  ", {})).toBe("spaced");
+    // blank explicit and blank MARROW_USER fall through to the OS user, which is
+    // environment-dependent (undefined in a root/node container); not asserted.
+    // a 200-char name is capped to the spine bound.
+    expect(resolveDecider("x".repeat(200), {})?.length).toBe(120);
   });
 
   it("refuses to answer a conflict without a choice, promoting neither side", async () => {

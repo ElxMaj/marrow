@@ -313,10 +313,16 @@ export async function answerQuestion(
   questionId: string,
   text: string,
   decide?: string,
+  decidedBy?: string,
 ): Promise<{ promoted: unknown[]; superseded: unknown[] }> {
   // `decide` names which related decision holds when a conflict question relates
   // to more than one; core promotes only that one and never both sides.
-  return core.answer(questionId, text, decide !== undefined ? { decide } : {});
+  // `decidedBy` names the human behind the promote (a session identity in a
+  // hosted console); core falls back to MARROW_USER or the OS user when absent.
+  return core.answer(questionId, text, {
+    ...(decide !== undefined ? { decide } : {}),
+    ...(decidedBy !== undefined ? { decidedBy } : {}),
+  });
 }
 
 export async function answerBatch(
@@ -601,11 +607,26 @@ async function handle(
     if (isReadOnly()) {
       return send(res, 403, { error: "this is a read-only demo; answering is disabled" });
     }
-    const body = (await readBody(req)) as { questionId?: string; text?: string; decide?: string };
+    const body = (await readBody(req)) as {
+      questionId?: string;
+      text?: string;
+      decide?: string;
+      decidedBy?: string;
+    };
+    if (
+      body.decidedBy !== undefined &&
+      (typeof body.decidedBy !== "string" || /[\n\r]/.test(body.decidedBy))
+    ) {
+      return send(res, 400, { error: "decidedBy must be a single-line string" });
+    }
     if (!body.questionId || typeof body.text !== "string") {
       return send(res, 400, { error: "questionId and text are required" });
     }
-    return send(res, 200, await answerQuestion(core, body.questionId, body.text, body.decide));
+    return send(
+      res,
+      200,
+      await answerQuestion(core, body.questionId, body.text, body.decide, body.decidedBy),
+    );
   }
   if (path === "/api/answer-batch" && req.method === "POST") {
     if (isReadOnly()) {

@@ -4,6 +4,7 @@
 export {
   Marrow,
   createMarrow,
+  resolveDecider,
   type IngestInput,
   type TraceSpan,
   type TraceResult,

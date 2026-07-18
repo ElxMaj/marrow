@@ -26,6 +26,10 @@ export type Status = z.infer<typeof StatusSchema>;
 export const ConfidenceSchema = z.object({
   value: z.number().min(0, "confidence cannot be below 0").max(1, "confidence cannot be above 1"),
   source: z.enum(["model", "human"]),
+  // who promoted this fact, present only on human-decided facts. Metadata about
+  // the promote event: it names the human whose judgment the fact carries, and
+  // never changes what may be decided or by what path.
+  decidedBy: z.string().min(1).max(120).optional(),
 });
 export type Confidence = z.infer<typeof ConfidenceSchema>;
 
