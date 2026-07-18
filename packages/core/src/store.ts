@@ -1286,6 +1286,17 @@ export class Store {
     );
   }
 
+  /** Whether a node already has an embedding row. Used by distill to reconcile a
+   *  node that was committed but whose embedding write failed on an earlier run,
+   *  so a transient embedding failure is not permanent. */
+  async hasEmbedding(nodeId: string, nodeKind: string): Promise<boolean> {
+    const res = await this.pool.query(
+      "select 1 from embedding where node_id = $1 and node_kind = $2 limit 1",
+      [nodeId, nodeKind],
+    );
+    return res.rows.length > 0;
+  }
+
   async embeddingProfile(): Promise<{ model: string; dim: number } | undefined> {
     const res = await this.pool.query<{ embedding_model: string; dim: number }>(
       "select embedding_model, dim from embedding limit 1",

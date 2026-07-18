@@ -258,6 +258,23 @@ describe("distillation", () => {
     await expect(core.traceToSource("dec_missing")).rejects.toThrow(/not found/);
   });
 
+  it("re-embeds an existing node that has no vector on the next distill (reconcile)", async () => {
+    const evId = await core.ingest({ text: gdyniaTranscript, source: "interviews/reembed.md" });
+    // a node committed with no embedding, exactly as a transient embed failure
+    // after the row's own commit would leave it. insertEntity does not embed.
+    const orphan = await store.insertEntity({
+      name: "reembed target",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: evId, start: 0, end: 5 }],
+    });
+    expect(await store.hasEmbedding(orphan.id, "entity")).toBe(false);
+
+    // distilling the same evidence runs the reconcile pass over existing nodes.
+    await core.distill(evId);
+    expect(await store.hasEmbedding(orphan.id, "entity")).toBe(true);
+  });
+
   it("drops a node whose quote is not in the text, never storing empty provenance", async () => {
     const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
     const nodes = await core.distill(id);
