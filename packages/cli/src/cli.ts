@@ -1605,14 +1605,19 @@ export function formatResult(result: unknown): string {
   // trace to source: one or more spans. The label marks quotes as records of
   // the room, not instructions, for agents reading CLI output from hooks.
   if (Array.isArray(r.spans) || "spanText" in r) {
+    const v = r.verification as { verdict: string; reasons: string[] } | undefined;
+    const skeptic = v
+      ? `${dim(`Skeptic: ${v.verdict}${v.reasons.length > 0 ? ` (${v.reasons.join(", ")})` : ""}`)}\n\n`
+      : "";
     const spans = Array.isArray(r.spans) ? (r.spans as { source: string; spanText: string }[]) : [];
     if (spans.length > 0) {
-      return spans
-        .map((s) => `Source (verbatim record): ${s.source}\n  "${s.spanText}"`)
-        .join("\n\n");
+      return (
+        skeptic +
+        spans.map((s) => `Source (verbatim record): ${s.source}\n  "${s.spanText}"`).join("\n\n")
+      );
     }
-    if (r.spanText) return `Source: ${String(r.source)}\n  "${String(r.spanText)}"`;
-    return "No source spans.";
+    if (r.spanText) return `${skeptic}Source: ${String(r.source)}\n  "${String(r.spanText)}"`;
+    return `${skeptic}No source spans.`;
   }
 
   return JSON.stringify(result, null, 2);

@@ -258,6 +258,55 @@ describe("distillation", () => {
     await expect(core.traceToSource("dec_missing")).rejects.toThrow(/not found/);
   });
 
+  it("traceToSource surfaces the skeptic's latest verdict, advisory and status-neutral", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/skeptic.md" });
+    const dec = await store.insertDecision({
+      title: "single-sourced claim",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    // an earlier flag, then the latest verdict: trace reports only the latest.
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "survived",
+      reasons: [],
+    });
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "flagged",
+      reasons: ["single_source"],
+    });
+
+    const trace = await core.traceToSource(dec.id);
+    expect(trace.verification).toEqual({
+      verdict: "flagged",
+      reasons: ["single_source"],
+      verifiedAt: expect.any(String),
+    });
+    // advisory only: the verdict never moves the node's status.
+    expect((await store.getDecision(dec.id))?.status).toBe("open");
+
+    // a node the skeptic never touched carries no verification field.
+    const clean = await core.traceToSource(
+      (
+        await store.insertDecision({
+          title: "unverified",
+          rationale: "",
+          constraint: false,
+          status: "open",
+          confidence: { value: 0.6, source: "model" },
+          provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+        })
+      ).id,
+    );
+    expect(clean.verification).toBeUndefined();
+  });
+
   it("drops a node whose quote is not in the text, never storing empty provenance", async () => {
     const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
     const nodes = await core.distill(id);

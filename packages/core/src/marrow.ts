@@ -189,6 +189,10 @@ export interface TraceResult {
   source: string | undefined;
   spanText: string | undefined;
   spans: TraceSpan[];
+  /** The skeptic's latest verdict on this node, if it has ever been verified.
+   *  Advisory only: it is surfaced so a flag is visible where a fact is
+   *  inspected. It never reorders retrieval and never promotes anything. */
+  verification?: { verdict: "survived" | "flagged"; reasons: string[]; verifiedAt: string };
 }
 
 export interface BriefNode {
@@ -1922,7 +1926,25 @@ export class Marrow {
       });
     }
     const first = spans[0];
-    return { nodeId, source: first?.source, spanText: first?.spanText, spans };
+    // The skeptic's verdict rides along, advisory, so a flag is visible right
+    // where the evidence is inspected. It gives latestVerification its one real
+    // caller and never reorders retrieval or changes a status.
+    const verification = await this.store.latestVerification(nodeId);
+    return {
+      nodeId,
+      source: first?.source,
+      spanText: first?.spanText,
+      spans,
+      ...(verification
+        ? {
+            verification: {
+              verdict: verification.verdict,
+              reasons: verification.reasons,
+              verifiedAt: verification.createdAt,
+            },
+          }
+        : {}),
+    };
   }
 
   /**

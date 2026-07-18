@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { READ_ONLY, getCore, readJson, sendJson } from "../../_core.js";
+import { READ_ONLY, getCore, readJson, route, sendJson } from "../../_core.js";
 
 // POST /api/catches/:questionId/accept — accept a catch (mark as acted on)
 // POST /api/catches/:questionId/dismiss — dismiss a catch (mark as noise)
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "POST") return sendJson(res, 405, { error: "method not allowed" });
   if (READ_ONLY)
     return sendJson(res, 403, { error: "this is a read-only demo; writes are disabled" });
@@ -41,3 +41,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     sendJson(res, 400, { error: msg });
   }
 }
+
+export default route(handler);
