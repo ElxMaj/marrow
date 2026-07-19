@@ -369,7 +369,11 @@ export function SourcePanel({
           <span className="conf-value">{formatConfidence(conf.value)}</span>
           <span className={`src ${conf.source}`}>{conf.source}</span>
           <span className="conf-standing">
-            {conf.source === "human" ? "A human stands behind this" : "A model proposed this"}
+            {conf.source === "human"
+              ? conf.decidedBy
+                ? `${conf.decidedBy} stands behind this`
+                : "A human stands behind this"
+              : "A model proposed this"}
           </span>
         </div>
 

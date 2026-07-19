@@ -118,6 +118,30 @@ describe("benchmark", () => {
     );
   });
 
+  it("the token count excludes the human decider, so it stays deterministic across machines", async () => {
+    // the promote path stamps a decider (an env-dependent OS user by default);
+    // the benchmark measures agent token cost and must not count it, or the
+    // report would drift between machines and the ratio would inflate.
+    await seedBenchmarkBrain(core, docs, { decide: true });
+    const input = {
+      corpusTexts: docs.map((d) => d.text),
+      questions: docs.map((d) => d.entity),
+      k: 4,
+    };
+    const asMarco = await runBenchmark(core, input);
+    const oldUser = process.env.MARROW_USER;
+    process.env.MARROW_USER = "a-much-longer-username-that-would-change-token-counts";
+    try {
+      const asLong = await runBenchmark(core, input);
+      expect(asLong.marrow.questions.map((q) => q.tokens)).toEqual(
+        asMarco.marrow.questions.map((q) => q.tokens),
+      );
+    } finally {
+      if (oldUser === undefined) delete process.env.MARROW_USER;
+      else process.env.MARROW_USER = oldUser;
+    }
+  });
+
   it("the labeled 12-doc corpus meets the recall, noise, and brief gates", async () => {
     interface CorpusSpec {
       file: string;

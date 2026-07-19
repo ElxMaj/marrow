@@ -167,7 +167,8 @@ describe("web api", () => {
       goalType: "product",
     });
     expect(goal.status).toBe("decided");
-    expect(goal.confidence).toEqual({ value: 1, source: "human" });
+    // a human-authored goal carries value + source, plus the decider (R19).
+    expect(goal.confidence).toMatchObject({ value: 1, source: "human" });
     expect(goal.provenance.length).toBeGreaterThan(0);
     // the team's own statement is the provenance: a real evidence span exists.
     const result = await trace(core, goal.id);

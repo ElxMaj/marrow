@@ -4,6 +4,7 @@
 export {
   Marrow,
   createMarrow,
+  resolveDecider,
   keylessEmbeddingProvider,
   type IngestInput,
   type TraceSpan,

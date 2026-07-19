@@ -833,7 +833,7 @@ describe("web api console endpoints", () => {
       };
       expect(created.id.startsWith("goal_")).toBe(true);
       expect(created.status).toBe("decided");
-      expect(created.confidence).toEqual({ value: 1, source: "human" });
+      expect(created.confidence).toMatchObject({ value: 1, source: "human" });
       expect(created.provenance.length).toBeGreaterThan(0);
 
       // a proposed (open, model) goal straight through core shows up too.

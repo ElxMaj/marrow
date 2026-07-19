@@ -474,6 +474,13 @@ describe("mcp tools", () => {
     expect(result.nodes.length).toBeGreaterThanOrEqual(1);
     // every distilled node is OPEN: the tool still cannot decide anything.
     expect(result.nodes.every((n) => n.status === "open")).toBe(true);
+    // and none carries a decider: naming a human is a property of the human
+    // promote path, which no MCP tool can reach (R19 keeps the decide boundary).
+    expect(
+      result.nodes.every(
+        (n) => (n as { confidence?: { decidedBy?: string } }).confidence?.decidedBy === undefined,
+      ),
+    ).toBe(true);
     // read-after-write: the same session finds what it just wrote.
     const hits = (await call("search", { query: "magic link auth" })) as {
       results: { id: string }[];

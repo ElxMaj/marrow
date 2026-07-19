@@ -9,6 +9,14 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** Serialize a node (or slice) as the agent would consume it, for the token
+ *  measurement: the human-accountability decider is stripped, matching what
+ *  prepare_task's brief serves. Keeps the benchmark measuring agent cost and
+ *  keeps it deterministic (no OS-user leak from the promote path). */
+function measureJson(value: unknown): string {
+  return JSON.stringify(value, (key, val) => (key === "decidedBy" ? undefined : val));
+}
+
 export interface SeedDoc {
   source: string;
   text: string;
@@ -135,7 +143,11 @@ export async function runBenchmark(
     const latencyMs = round(performance.now() - start);
     const result: QuestionResult = {
       question,
-      tokens: estimateTokens(JSON.stringify(slice)),
+      // measure the agent's token cost: the decider is human-accountability
+      // metadata the agent never reads (the brief strips it too), and it would
+      // otherwise stamp the env's OS user into the count and make the report
+      // drift by machine.
+      tokens: estimateTokens(measureJson(slice)),
       latencyMs,
       results: slice.length,
     };
@@ -150,7 +162,7 @@ export async function runBenchmark(
       result.recall = round(hits / wanted.length);
       result.noiseTokens = slice
         .filter((node) => !wanted.includes(titleOf(node)))
-        .reduce((sum, node) => sum + estimateTokens(JSON.stringify(node)), 0);
+        .reduce((sum, node) => sum + estimateTokens(measureJson(node)), 0);
       relevantHits += hits;
       relevantTotal += wanted.length;
       noiseTokensTotal += result.noiseTokens;

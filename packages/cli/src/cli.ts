@@ -35,6 +35,7 @@ const flagValue = (args: string[], name: string): string | undefined => {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
 };
 const VALUE_FLAGS = new Set([
+  "--as",
   "--audio",
   "--confidence",
   "--days",
@@ -417,12 +418,14 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
             'Usage: marrow goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]',
           );
         }
+        const as = flagValue(rest, "--as");
         return {
           goal: await core.authorGoal({
             title,
             goalType: type,
             ...(description !== undefined ? { description } : {}),
             ...(entityId !== undefined ? { entityId } : {}),
+            ...(as !== undefined ? { decidedBy: as } : {}),
           }),
         };
       }
@@ -675,12 +678,16 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       const id = positional(rest);
       const text = flagValue(rest, "--text");
       const decide = flagValue(rest, "--decide");
+      const as = flagValue(rest, "--as");
       if (!id || text === undefined) {
         throw new Error(
-          'Usage: marrow answer <questionId> --text "your answer" [--decide <decisionId>]',
+          'Usage: marrow answer <questionId> --text "your answer" [--decide <decisionId>] [--as <name>]',
         );
       }
-      return core.answer(id, text, decide !== undefined ? { decide } : {});
+      return core.answer(id, text, {
+        ...(decide !== undefined ? { decide } : {}),
+        ...(as !== undefined ? { decidedBy: as } : {}),
+      });
     }
 
     case "init": {
@@ -745,10 +752,13 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
     case "accept": {
       const id = positional(rest);
       const text = flagValue(rest, "--text");
+      const as = flagValue(rest, "--as");
       if (!id || text === undefined) {
-        throw new Error('Usage: marrow accept <questionId> --text "what you did about the drift"');
+        throw new Error(
+          'Usage: marrow accept <questionId> --text "what you did about the drift" [--as <name>]',
+        );
       }
-      return core.acceptCatch(id, text);
+      return core.acceptCatch(id, text, as);
     }
 
     case "metrics": {
@@ -917,7 +927,10 @@ function formatNode(node: Distilled): string {
   // list of decisions reads as decided-vs-open at a glance. a verified date shows
   // when a human stood behind the fact (comma-free to keep the em-dash guard happy).
   const verified = node.verifiedAt ? ` · verified ${relTime(node.verifiedAt)}` : "";
-  return `  [${colorStatus(node.status)}] ${label}: ${nodeTitle(node)}\n      ${dim(`${c.value} ${c.source} · ${spans} source span${spans === 1 ? "" : "s"}${verified} · ${node.id}`)}`;
+  // name the human behind a promoted fact, so a team can tell whose judgment it
+  // carries: "1.00 human (elie)". Absent on model-proposed or legacy facts.
+  const by = c.source === "human" && c.decidedBy ? ` (${c.decidedBy})` : "";
+  return `  [${colorStatus(node.status)}] ${label}: ${nodeTitle(node)}\n      ${dim(`${c.value} ${c.source}${by} · ${spans} source span${spans === 1 ? "" : "s"}${verified} · ${node.id}`)}`;
 }
 
 function relTime(iso: string): string {
