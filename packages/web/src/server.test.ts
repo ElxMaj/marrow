@@ -254,6 +254,55 @@ describe("web api server", () => {
     expect(await head.text()).toBe("");
   });
 
+  it("a hostile page cannot write into the brain: cross-origin POSTs die, same-origin lives", async () => {
+    const payload = { text: "csrf probe", source: "hostile.md" };
+    // a browser on another site attaches its Origin: refused before any work.
+    const hostile = await fetch(`${base}/api/ingest`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://evil.example" },
+      body: JSON.stringify(payload),
+    });
+    expect(hostile.status).toBe(403);
+    expect(((await hostile.json()) as { error: string }).error).toMatch(/cross-origin/);
+
+    // the classic no-preflight CSRF shape: an HTML form body. refused by type.
+    const form = await fetch(`${base}/api/ingest`, {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "https://evil.example" },
+      body: "text=x&source=y",
+    });
+    expect(form.status).toBe(403);
+
+    // same-origin (Origin matches Host) passes the gate.
+    const host = new URL(base).host;
+    const sameOrigin = await fetch(`${base}/api/ingest`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: `http://${host}` },
+      body: JSON.stringify({ text: "same origin note", source: "console.md" }),
+    });
+    expect(sameOrigin.status).toBe(200);
+
+    // curl-style requests carry no Origin at all and keep working, but a
+    // body that is not JSON is refused by content type.
+    const plainBody = await fetch(`${base}/api/ingest`, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "not json",
+    });
+    expect(plainBody.status).toBe(415);
+  });
+
+  it("responses carry the defensive headers", async () => {
+    const api = await fetch(`${base}/api/state`);
+    expect(api.headers.get("cache-control")).toBe("no-store");
+    expect(api.headers.get("x-content-type-options")).toBe("nosniff");
+
+    const html = await fetch(`${base}/`);
+    expect(html.headers.get("x-frame-options")).toBe("DENY");
+    expect(html.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(html.headers.get("content-security-policy")).toMatch(/default-src 'self'/);
+  });
+
   it("startWebServer binds localhost by default and serves the SPA", async () => {
     const port = await getFreePort();
     const started = await startWebServer({ core, port, clientDir });
