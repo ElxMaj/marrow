@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { getStore, sendJson } from "../../_core.js";
+import { getStore, route, sendJson } from "../../_core.js";
 
 // GET /api/catches — list all drift catches with status, metrics
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "GET") return sendJson(res, 405, { error: "method not allowed" });
   const store = getStore();
 
@@ -60,3 +60,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   views.sort((a, b) => b.surfacedAt.localeCompare(a.surfacedAt));
   sendJson(res, 200, views);
 }
+
+export default route(handler);
