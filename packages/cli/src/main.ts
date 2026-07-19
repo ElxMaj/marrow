@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** `marrow demo`: the hero slice end to end with NO API key, a scripted model
  *  plus a deterministic in-process embedding, against the bundled interview. The
  *  60 second proof on a fresh install. Needs only Postgres (Marrow's one infra). */
-async function runDemoCommand(): Promise<void> {
+async function runDemoCommand(argv: string[] = []): Promise<void> {
   const core = await import("@marrowhq/core");
   const store = core.createStore(process.env.DATABASE_URL);
   // The demo is the fresh-install proof, so it sets up its own schema first.
@@ -26,6 +26,27 @@ async function runDemoCommand(): Promise<void> {
   // schema is already current.
   const migrated = await core.migrate(process.env.DATABASE_URL);
   if (migrated.applied.length > 0) console.log("Set up the schema for the demo.");
+  // The demo writes fictional product facts and evidence is append-only:
+  // there is no undo. It refuses a brain that holds anything real, and
+  // refuses to duplicate itself, unless forced.
+  if (!argv.includes("--force")) {
+    const check = await core.checkDemoBrain(store);
+    if (!check.ok) {
+      await store.close();
+      if (check.reason === "has-real-evidence") {
+        console.error(
+          `This brain already holds ${check.otherCount} piece(s) of real evidence, and the demo writes fictional product facts into append-only storage.\n` +
+            `Point DATABASE_URL at a fresh database for the demo (e.g. createdb marrow_demo), or pass --force to write into this one anyway.`,
+        );
+      } else {
+        console.error(
+          "The demo already ran in this brain. Explore it with `marrow web` or `marrow truth`, run it again against a fresh database, or pass --force to append a duplicate run.",
+        );
+      }
+      process.exitCode = 3;
+      return;
+    }
+  }
   let brain: InstanceType<typeof core.Marrow> | undefined;
   try {
     brain = new core.Marrow(
@@ -157,7 +178,7 @@ async function main(): Promise<void> {
   // the two special commands: `web` stays up (long-running), `demo` builds its
   // own keyless core. both sit outside the standard run-one-command-and-close path.
   if (argv[0] === "web") return runWebCommand(argv);
-  if (argv[0] === "demo") return runDemoCommand();
+  if (argv[0] === "demo") return runDemoCommand(argv.slice(1));
   if (argv[0] === "migrate") return runMigrateCommand();
   if (argv[0] === "doctor") return runDoctorCommand(argv);
   if (argv[0] === "watch") return runWatchCommand(argv);

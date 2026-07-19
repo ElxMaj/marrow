@@ -235,6 +235,25 @@ describe("edge extraction (the knowledge graph)", () => {
     expect(matches[0]?.title).toBe("checkout uses one-click");
   });
 
+  it("decisionsConcerningEntity matches whole words, not substrings", () => {
+    // 'auth' must not match 'author'/'authorize'; whole-word membership only.
+    const matches = decisionsConcerningEntity({ name: "auth" }, [
+      { title: "the author owns the doc", rationale: "authorize the editor" },
+      { title: "auth uses passkeys", rationale: "" },
+    ]);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.title).toBe("auth uses passkeys");
+  });
+
+  it("ruleDriftSignal matches identifier words, not substrings (sync not async)", () => {
+    const decision = { title: "no sync writes on the render path", rationale: "" };
+    // 'async function' must NOT trip the negated 'sync' term...
+    expect(ruleDriftSignal("async function render() {}", decision)).toBeUndefined();
+    // ...but a real sync identifier (camelCase or snake_case) still does.
+    expect(ruleDriftSignal("await syncWrites(doc)", decision)?.term).toBe("sync");
+    expect(ruleDriftSignal("sync_writes(doc)", decision)?.term).toBe("sync");
+  });
+
   it("writes a concerns edge from an entity to a decision about it, status unchanged", async () => {
     const ev = await store.insertEvidence({
       text: "checkout should be one click",
@@ -674,6 +693,32 @@ describe("lint catches poisoned evidence in the scheduled sweep", () => {
     // lint reports, never mutates: the node and the evidence are untouched.
     expect((await store.getDecision(node.id))?.status).toBe("open");
     expect((await store.getEvidence(ev.id))?.text).toBe(poisoned);
+  });
+
+  it("reports out_of_bounds_span for legacy provenance past the evidence text", async () => {
+    const text = "short note";
+    const ev = await store.insertEvidence({ text, source: "room/short.md" });
+    const node = await store.insertDecision({
+      title: "a legacy fact with a broken quote",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: text.length }],
+    });
+    // the store now rejects such spans at insert; forge a pre-guard legacy row
+    // directly, the way old data could still carry one.
+    await admin.query(
+      "insert into provenance (node_id, node_kind, evidence_id, span_start, span_end) values ($1, 'decision', $2, 5, 500)",
+      [node.id, ev.id],
+    );
+
+    const report = await core.lint();
+    const bad = report.issues.find((issue) => issue.kind === "out_of_bounds_span");
+    expect(bad).toBeDefined();
+    expect(bad?.nodeIds).toContain(node.id);
+    expect(bad?.detail).toMatch(/outside evidence/);
+    expect(report.counts.outOfBoundsSpans).toBeGreaterThanOrEqual(1);
   });
 });
 

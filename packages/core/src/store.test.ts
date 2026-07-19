@@ -242,6 +242,34 @@ describe("Store", () => {
     expect(round?.provenance).toHaveLength(1);
   });
 
+  it("rejects a provenance span that falls outside its evidence text", async () => {
+    // no fact without a real quote: a span past the end renders as a blank or
+    // truncated quote, so the store refuses it on every insert path.
+    const text = "ten chars!";
+    const ev = await store.insertEvidence({ text, source: "room/short.md" });
+    const draft = (span: { start: number; end: number }) => ({
+      name: "broken quote",
+      status: "open" as const,
+      confidence: { value: 0.5, source: "model" as const },
+      provenance: [{ evidenceId: ev.id, ...span }],
+    });
+    await expect(store.insertEntity(draft({ start: 0, end: 500 }))).rejects.toThrow(
+      /outside evidence/,
+    );
+    // negative starts are refused upstream by the draft schema; still an error.
+    await expect(store.insertEntity(draft({ start: -2, end: 4 }))).rejects.toThrow();
+    await expect(store.insertEntity(draft({ start: 4, end: 4 }))).rejects.toThrow(
+      /outside evidence/,
+    );
+    // the boundary itself is fine: the full text is a real quote.
+    const good = await store.insertEntity(draft({ start: 0, end: text.length }));
+    expect(good.provenance).toHaveLength(1);
+    // attaching to an existing node goes through the same choke point.
+    await expect(
+      store.addProvenance(good.id, "entity", [{ evidenceId: ev.id, start: 2, end: 999 }]),
+    ).rejects.toThrow(/outside evidence/);
+  });
+
   it("records catch events and lists them by decision", async () => {
     const ev = await store.insertEvidence({ text: "decided", source: "eval" });
     const decision = await store.insertDecision({
@@ -973,6 +1001,36 @@ describe("dedupe delete completeness", () => {
     expect(edges[0]?.toId).toBe(decision.id);
     expect(await store.edgesFor(dupe.id)).toHaveLength(0);
     expect((await store.latestVerification(canonical.id))?.verdict).toBe("survived");
+  });
+
+  it("re-points a goal's entity_id on merge so deleting a goal-referenced entity does not trip the FK", async () => {
+    const { canonical, dupe } = await seedDupePair();
+    const ev = await store.insertEvidence({ text: "the goal source", source: "room/goal.md" });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 3 }];
+    const merged = await store.insertGoal({
+      title: "make billing self-serve",
+      goalType: "product",
+      entityId: dupe.id,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+
+    // must not throw a foreign-key violation; the goal follows the merge.
+    await store.deleteEntity(dupe.id, canonical.id);
+    expect((await store.getGoal(merged.id))?.entityId).toBe(canonical.id);
+
+    // a plain removal (no canonical) detaches the goal rather than FK-aborting.
+    const orphaned = await store.insertGoal({
+      title: "retire the old portal",
+      goalType: "product",
+      entityId: canonical.id,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    await store.deleteEntity(canonical.id);
+    expect((await store.getGoal(orphaned.id))?.entityId).toBeUndefined();
   });
 
   it("drops edges that would duplicate an existing canonical edge, and self-loops", async () => {

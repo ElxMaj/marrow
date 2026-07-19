@@ -49,6 +49,7 @@ import {
   createVisionProvider,
   loadProviderConfig,
 } from "./providers/config.js";
+import { LocalEmbeddingProvider } from "./providers/local-embedding.js";
 import {
   type EmbeddingProvider,
   type ModelProvider,
@@ -191,6 +192,10 @@ export interface TraceResult {
   source: string | undefined;
   spanText: string | undefined;
   spans: TraceSpan[];
+  /** The skeptic's latest verdict on this node, if it has ever been verified.
+   *  Advisory only: it is surfaced so a flag is visible where a fact is
+   *  inspected. It never reorders retrieval and never promotes anything. */
+  verification?: { verdict: "survived" | "flagged"; reasons: string[]; verifiedAt: string };
 }
 
 export interface BriefNode {
@@ -275,7 +280,8 @@ export interface LintIssue {
     | "near_duplicate_nodes"
     | "contradiction"
     | "dead_edge"
-    | "instruction_smell";
+    | "instruction_smell"
+    | "out_of_bounds_span";
   detail: string;
   nodeIds: string[];
 }
@@ -289,6 +295,7 @@ export interface LintReport {
     contradictions: number;
     deadEdges: number;
     instructionSmells: number;
+    outOfBoundsSpans: number;
   };
 }
 
@@ -326,6 +333,22 @@ export interface GraphEdge {
 export interface BrainGraph {
   nodes: IndexEntry[];
   edges: GraphEdge[];
+}
+
+/** A drift scan's outcome: catches created this run, their event ids, and the
+ *  still-open catches from earlier runs that match the CURRENT diff. The last
+ *  set is what keeps a CI gate red on re-run: dedupe stops duplicate catches,
+ *  it never stops the violation from counting. */
+export interface DriftScanResult {
+  created: Distilled[];
+  events: number[];
+  openMatches: {
+    questionId: string;
+    decisionId: string;
+    path: string;
+    lineStart: number;
+    lineEnd: number;
+  }[];
 }
 
 export interface TaskBrief {
@@ -569,140 +592,158 @@ export class Marrow {
     if (!evidence) throw new Error(`distill: evidence ${evidenceId} not found`);
     const model = this.model;
 
-    // wrap the whole pass in one observability run: latency, the model used,
-    // real token usage when the provider reports it, and the node count. a
-    // failing distill records an error run and rethrows.
-    return traced(this.store, { kind: "distill", label: evidence.source }, async (report) => {
-      const existing = await this.store.getNodesForEvidence(evidenceId);
-      const seen = new Set(existing.map((node) => nodeKey(node, evidenceId)));
-      const created: Distilled[] = [];
-      let tokensIn = 0;
-      let tokensOut = 0;
-      let hasUsage = false;
-
-      const confidenceOf = (value: number | undefined) =>
-        ({ value: value ?? 0.6, source: "model" }) as const;
-
-      // the extraction policy: a soft prompt clause plus a deterministic
-      // post-extraction filter. The filter is the guarantee; the clause just
-      // saves tokens by asking the model not to bother.
-      const policy = loadPolicy();
-      const clause = policyPromptClause(policy);
-      const system = clause.length > 0 ? `${DISTILL_SYSTEM}\n${clause}` : DISTILL_SYSTEM;
-      let policyDrops = 0;
-
-      // one model call per chunk; every quote is resolved back into the FULL
-      // evidence text, so spans stay correct no matter where a chunk boundary fell.
-      for (const chunk of chunkText(evidence.text, DISTILL_CHUNK_CHARS)) {
-        const opts = {
-          system,
-          temperature: 0,
-          maxTokens: DISTILL_MAX_TOKENS,
-        };
-        let raw: string;
-        if (model.completeDetailed) {
-          const completion = await model.completeDetailed(buildDistillPrompt(chunk), opts);
-          raw = completion.text;
-          if (completion.usage) {
-            tokensIn += completion.usage.inputTokens;
-            tokensOut += completion.usage.outputTokens;
-            hasUsage = true;
+    // serialize distills of the SAME evidence: the `seen` dedup set is built from
+    // an in-memory read, so two concurrent passes would both read empty and each
+    // insert the full node set. The lock keys on evidenceId, so distinct evidence
+    // still distills in parallel. wrap the whole pass in one observability run:
+    // latency, the model used, real token usage when the provider reports it, and
+    // the node count. a failing distill records an error run and rethrows.
+    return this.store.withDistillLock(evidenceId, () =>
+      traced(this.store, { kind: "distill", label: evidence.source }, async (report) => {
+        const existing = await this.store.getNodesForEvidence(evidenceId);
+        const seen = new Set(existing.map((node) => nodeKey(node, evidenceId)));
+        // reconcile: a node insert and its embedding write are separate
+        // transactions, so an earlier run could commit a node but fail to embed it
+        // (a transient embedding error). the dedupe skip below would then make that
+        // miss permanent, leaving a real fact invisible to semantic search. re-embed
+        // any existing node missing its vector so a re-distill of the same source
+        // repairs it. cheap: a no-op once every node is embedded.
+        if (this.embedding) {
+          for (const node of existing) {
+            if (!(await this.store.hasEmbedding(node.id, node.kind))) {
+              await this.embedNode(node.id, node.kind, this.embedTextForNode(node));
+            }
           }
-        } else {
-          raw = await model.complete(buildDistillPrompt(chunk), opts);
         }
-        const parsed = parseExtraction(raw);
-        const filtered = filterExtraction(parsed, policy);
-        policyDrops += filtered.dropped;
-        const extraction = filtered.extraction;
+        const created: Distilled[] = [];
+        let tokensIn = 0;
+        let tokensOut = 0;
+        let hasUsage = false;
 
-        for (const entity of extraction.entities) {
-          const span = resolveSpan(evidence.text, entity);
-          if (!span) continue;
-          const key = distilledKey("entity", entity.name, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertEntity({
-            name: entity.name,
-            ...(entity.description !== undefined ? { description: entity.description } : {}),
-            status: "open",
-            confidence: confidenceOf(entity.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "entity", entity.name);
-          created.push(node);
+        const confidenceOf = (value: number | undefined) =>
+          ({ value: value ?? 0.6, source: "model" }) as const;
+
+        // the extraction policy: a soft prompt clause plus a deterministic
+        // post-extraction filter. The filter is the guarantee; the clause just
+        // saves tokens by asking the model not to bother.
+        const policy = loadPolicy();
+        const clause = policyPromptClause(policy);
+        const system = clause.length > 0 ? `${DISTILL_SYSTEM}\n${clause}` : DISTILL_SYSTEM;
+        let policyDrops = 0;
+
+        // one model call per chunk; every quote is resolved back into the FULL
+        // evidence text, so spans stay correct no matter where a chunk boundary fell.
+        for (const chunk of chunkText(evidence.text, DISTILL_CHUNK_CHARS)) {
+          const opts = {
+            system,
+            temperature: 0,
+            maxTokens: DISTILL_MAX_TOKENS,
+          };
+          let raw: string;
+          if (model.completeDetailed) {
+            const completion = await model.completeDetailed(buildDistillPrompt(chunk), opts);
+            raw = completion.text;
+            if (completion.usage) {
+              tokensIn += completion.usage.inputTokens;
+              tokensOut += completion.usage.outputTokens;
+              hasUsage = true;
+            }
+          } else {
+            raw = await model.complete(buildDistillPrompt(chunk), opts);
+          }
+          const parsed = parseExtraction(raw);
+          const filtered = filterExtraction(parsed, policy);
+          policyDrops += filtered.dropped;
+          const extraction = filtered.extraction;
+
+          for (const entity of extraction.entities) {
+            const span = resolveSpan(evidence.text, entity);
+            if (!span) continue;
+            const key = distilledKey("entity", entity.name, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertEntity({
+              name: entity.name,
+              ...(entity.description !== undefined ? { description: entity.description } : {}),
+              status: "open",
+              confidence: confidenceOf(entity.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "entity", entity.name);
+            created.push(node);
+          }
+
+          for (const decision of extraction.decisions) {
+            const span = resolveSpan(evidence.text, decision);
+            if (!span) continue;
+            const key = distilledKey("decision", decision.title, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertDecision({
+              title: decision.title,
+              rationale: decision.rationale ?? "",
+              constraint: decision.constraint ?? false,
+              status: "open",
+              confidence: confidenceOf(decision.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(
+              node.id,
+              "decision",
+              `${decision.title} ${decision.rationale ?? ""}`,
+            );
+            created.push(node);
+          }
+
+          for (const goal of extraction.goals) {
+            const span = resolveSpan(evidence.text, goal);
+            if (!span) continue;
+            const key = distilledKey("goal", goal.title, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertGoal({
+              title: goal.title,
+              ...(goal.description !== undefined ? { description: goal.description } : {}),
+              goalType: goal.goalType,
+              status: "open",
+              confidence: confidenceOf(goal.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "goal", `${goal.title} ${goal.description ?? ""}`);
+            created.push(node);
+          }
+
+          for (const question of extraction.questions) {
+            const span = resolveSpan(evidence.text, question);
+            if (!span) continue;
+            const key = distilledKey("question", question.prompt, span.start, span.end);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const node = await this.store.insertQuestion({
+              prompt: question.prompt,
+              status: "open",
+              confidence: confidenceOf(question.confidence),
+              provenance: [{ evidenceId, start: span.start, end: span.end }],
+            });
+            await this.embedNode(node.id, "question", question.prompt);
+            created.push(node);
+          }
         }
 
-        for (const decision of extraction.decisions) {
-          const span = resolveSpan(evidence.text, decision);
-          if (!span) continue;
-          const key = distilledKey("decision", decision.title, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertDecision({
-            title: decision.title,
-            rationale: decision.rationale ?? "",
-            constraint: decision.constraint ?? false,
-            status: "open",
-            confidence: confidenceOf(decision.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(
-            node.id,
-            "decision",
-            `${decision.title} ${decision.rationale ?? ""}`,
-          );
-          created.push(node);
-        }
-
-        for (const goal of extraction.goals) {
-          const span = resolveSpan(evidence.text, goal);
-          if (!span) continue;
-          const key = distilledKey("goal", goal.title, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertGoal({
-            title: goal.title,
-            ...(goal.description !== undefined ? { description: goal.description } : {}),
-            goalType: goal.goalType,
-            status: "open",
-            confidence: confidenceOf(goal.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "goal", `${goal.title} ${goal.description ?? ""}`);
-          created.push(node);
-        }
-
-        for (const question of extraction.questions) {
-          const span = resolveSpan(evidence.text, question);
-          if (!span) continue;
-          const key = distilledKey("question", question.prompt, span.start, span.end);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const node = await this.store.insertQuestion({
-            prompt: question.prompt,
-            status: "open",
-            confidence: confidenceOf(question.confidence),
-            provenance: [{ evidenceId, start: span.start, end: span.end }],
-          });
-          await this.embedNode(node.id, "question", question.prompt);
-          created.push(node);
-        }
-      }
-
-      report({
-        model: model.model,
-        ...(hasUsage ? { tokensIn, tokensOut } : {}),
-        inputSummary: `${evidence.text.length} chars`,
-        outputSummary: `${created.length} new node${created.length === 1 ? "" : "s"}`,
-        metadata: {
-          evidenceId,
-          newNodes: created.length,
-          ...(policyDrops > 0 ? { policyDrops } : {}),
-        },
-      });
-      return [...existing, ...created];
-    });
+        report({
+          model: model.model,
+          ...(hasUsage ? { tokensIn, tokensOut } : {}),
+          inputSummary: `${evidence.text.length} chars`,
+          outputSummary: `${created.length} new node${created.length === 1 ? "" : "s"}`,
+          metadata: {
+            evidenceId,
+            newNodes: created.length,
+            ...(policyDrops > 0 ? { policyDrops } : {}),
+          },
+        });
+        return [...existing, ...created];
+      }),
+    );
   }
 
   /** Ingest, distill, then reconcile against the graph synchronously, so the
@@ -1469,13 +1510,17 @@ export class Marrow {
       trigger?: string | undefined;
       synthetic?: boolean | undefined;
     } = {},
-  ): Promise<{ created: Distilled[]; events: number[] }> {
+  ): Promise<DriftScanResult> {
     return traced(this.store, { kind: "drift", label: repoPath }, async (report) => {
       const result = await this.runDriftScan(repoPath, options);
       report({
         ...(options.semantic !== false && this.model ? { model: this.model.model } : {}),
-        outputSummary: `${result.created.length} catch${result.created.length === 1 ? "" : "es"}`,
-        metadata: { catches: result.created.length, events: result.events.length },
+        outputSummary: `${result.created.length} catch${result.created.length === 1 ? "" : "es"}, ${result.openMatches.length} still open`,
+        metadata: {
+          catches: result.created.length,
+          events: result.events.length,
+          openMatches: result.openMatches.length,
+        },
       });
       return result;
     });
@@ -1491,20 +1536,21 @@ export class Marrow {
       trigger?: string | undefined;
       synthetic?: boolean | undefined;
     } = {},
-  ): Promise<{ created: Distilled[]; events: number[] }> {
-    if (options.enabled === false) return { created: [], events: [] };
+  ): Promise<DriftScanResult> {
+    if (options.enabled === false) return { created: [], events: [], openMatches: [] };
     const trigger = options.trigger ?? "manual";
     const synthetic = options.synthetic ?? false;
     const useSemantic = options.semantic !== false && this.model !== undefined;
 
     const hunks = options.hunks ?? (await readGitDiff(repoPath, options.scope ?? "unstaged"));
-    if (hunks.length === 0) return { created: [], events: [] };
+    if (hunks.length === 0) return { created: [], events: [], openMatches: [] };
 
     // maintenance watches decided decisions (constraints) AND decided goals
     // (aspirations). either is enough to make a scan worthwhile.
     const decided = await this.store.listDecisions({ status: "decided" });
     const decidedGoals = await this.store.listGoals({ status: "decided" });
-    if (decided.length === 0 && decidedGoals.length === 0) return { created: [], events: [] };
+    if (decided.length === 0 && decidedGoals.length === 0)
+      return { created: [], events: [], openMatches: [] };
 
     const created: Distilled[] = [];
     const events: number[] = [];
@@ -1527,15 +1573,21 @@ export class Marrow {
 
     // load prior catch events (surfaced or dismissed) so we do not recreate the
     // same catch after a human dismisses it, and so multiple hunks for the same
-    // decision are each surfaced once.
-    const priorCatchSignatures = new Set<string>();
+    // decision are each surfaced once. keep the question id per signature: a
+    // dedupe hit on a STILL-OPEN catch is not "no drift", it is the same
+    // unresolved violation seen again, and the gate must stay red for it.
+    const priorCatchSignatures = new Map<string, string | undefined>();
     for (const decision of decided) {
       const decisionEvents = await this.store.listCatchEvents({ decisionId: decision.id });
       for (const event of decisionEvents) {
-        const e = event as { diff_span?: { path?: string; lineStart?: number; lineEnd?: number } };
+        const e = event as {
+          question_id?: string | null;
+          diff_span?: { path?: string; lineStart?: number; lineEnd?: number };
+        };
         if (e.diff_span?.path !== undefined) {
-          priorCatchSignatures.add(
+          priorCatchSignatures.set(
             `${decision.id}:${e.diff_span.path}:${e.diff_span.lineStart}-${e.diff_span.lineEnd}`,
+            e.question_id ?? undefined,
           );
         }
       }
@@ -1549,15 +1601,38 @@ export class Marrow {
       signal: NonNullable<ReturnType<typeof ruleDriftSignal>>;
     }
     const ruleCandidates: Candidate[] = [];
+    const dedupedHits = new Map<
+      string,
+      { decisionId: string; path: string; lineStart: number; lineEnd: number }
+    >();
     for (let hunkIndex = 0; hunkIndex < hunks.length; hunkIndex += 1) {
       const hunk = hunks[hunkIndex];
       if (!hunk) continue;
       for (const decision of decided) {
         const signature = `${decision.id}:${hunkSignature(hunk)}`;
-        if (priorCatchSignatures.has(signature)) continue;
+        if (priorCatchSignatures.has(signature)) {
+          const questionId = priorCatchSignatures.get(signature);
+          if (questionId !== undefined && ruleDriftSignal(hunk.newLines, decision)) {
+            dedupedHits.set(questionId, {
+              decisionId: decision.id,
+              path: hunk.path,
+              lineStart: hunk.lineStart,
+              lineEnd: hunk.lineEnd,
+            });
+          }
+          continue;
+        }
         const signal = ruleDriftSignal(hunk.newLines, decision);
         if (signal) ruleCandidates.push({ decision, hunk, hunkIndex, signal });
       }
+    }
+
+    // deduped signatures whose catch question is STILL OPEN: the same
+    // violation seen again. a re-run must not launder it green.
+    const openMatches: DriftScanResult["openMatches"] = [];
+    for (const [questionId, hit] of dedupedHits) {
+      const question = await this.store.getQuestion(questionId);
+      if (question?.status === "open") openMatches.push({ questionId, ...hit });
     }
 
     // semantic layer: precision filter over rule candidates when a model is
@@ -1686,7 +1761,7 @@ export class Marrow {
       }
     }
 
-    return { created, events };
+    return { created, events, openMatches };
   }
 
   /** Shared guard for every catch resolution path: the question must exist, be
@@ -1929,7 +2004,25 @@ export class Marrow {
       });
     }
     const first = spans[0];
-    return { nodeId, source: first?.source, spanText: first?.spanText, spans };
+    // The skeptic's verdict rides along, advisory, so a flag is visible right
+    // where the evidence is inspected. It gives latestVerification its one real
+    // caller and never reorders retrieval or changes a status.
+    const verification = await this.store.latestVerification(nodeId);
+    return {
+      nodeId,
+      source: first?.source,
+      spanText: first?.spanText,
+      spans,
+      ...(verification
+        ? {
+            verification: {
+              verdict: verification.verdict,
+              reasons: verification.reasons,
+              verifiedAt: verification.createdAt,
+            },
+          }
+        : {}),
+    };
   }
 
   /**
@@ -2142,6 +2235,17 @@ export class Marrow {
       });
     }
 
+    // 5. out-of-bounds spans: provenance whose quote renders blank or
+    //    truncated because the span falls outside its evidence text. New
+    //    inserts are rejected at the store; this finds legacy rows.
+    for (const span of await this.store.outOfBoundsSpans()) {
+      issues.push({
+        kind: "out_of_bounds_span",
+        detail: `${span.nodeKind} ${span.nodeId} cites span [${span.start}-${span.end}] outside evidence ${span.evidenceId}: the quote renders empty or truncated`,
+        nodeIds: [span.nodeId],
+      });
+    }
+
     return {
       issues,
       counts: {
@@ -2150,6 +2254,7 @@ export class Marrow {
         contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
         deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
         instructionSmells: issues.filter((issue) => issue.kind === "instruction_smell").length,
+        outOfBoundsSpans: issues.filter((issue) => issue.kind === "out_of_bounds_span").length,
       },
     };
   }
@@ -2667,13 +2772,41 @@ export class Marrow {
     return new SyncEngine({ store: this.store }).runAll();
   }
 
+  /** The text a node is embedded from, matching what each create path passes to
+   *  embedNode, so a reconcile re-embed produces the same vector. */
+  private embedTextForNode(node: Distilled): string {
+    switch (node.kind) {
+      case "entity":
+        return node.name;
+      case "decision":
+        return `${node.title} ${node.rationale}`;
+      case "goal":
+        return `${node.title} ${node.description ?? ""}`;
+      case "question":
+        return node.prompt;
+    }
+  }
+
   private async embedNode(
     nodeId: string,
     nodeKind: "entity" | "decision" | "question" | "goal",
     text: string,
   ): Promise<void> {
     if (!this.embedding) return;
-    const result = await this.embedding.embed([text]);
+    let result;
+    try {
+      result = await this.embedding.embed([text]);
+    } catch (err) {
+      // An embedder that cannot run must not kill a write: the node lands
+      // without a vector (findable lexically) and the degraded mode is said
+      // once per process, never silently.
+      if (!this.embedFailureAnnounced) {
+        this.embedFailureAnnounced = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`marrow: embedding unavailable (${msg}); storing without vectors\n`);
+      }
+      return;
+    }
     const vector = result.vectors[0];
     if (!vector) return;
     await this.store.insertEmbedding({
@@ -2687,10 +2820,23 @@ export class Marrow {
 
   /** Embed a search query with the configured provider, or undefined if there is
    *  no embedder or it returns nothing. used by search to rank semantically. */
+  private embedFailureAnnounced = false;
   private async embedQuery(query: string): Promise<number[] | undefined> {
     if (!this.embedding) return undefined;
-    const result = await this.embedding.embed([query]);
-    return result.vectors[0];
+    try {
+      const result = await this.embedding.embed([query]);
+      return result.vectors[0];
+    } catch (err) {
+      // An embedder that cannot run (optional package missing, model download
+      // offline, endpoint down) must not kill search. Degrade to lexical, but
+      // never silently: say so once per process so the mode is visible.
+      if (!this.embedFailureAnnounced) {
+        this.embedFailureAnnounced = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`marrow: embedding unavailable (${msg}); searching lexical-only\n`);
+      }
+      return undefined;
+    }
   }
 
   async close(): Promise<void> {
@@ -2724,6 +2870,17 @@ function osUserName(): string | undefined {
   }
 }
 
+/** Embeddings need no model key. A user with no provider config at all still
+ *  gets semantic search from the zero-config in-process local model (a one-time
+ *  ~25MB download, announced on first use, then cached). MARROW_LOCAL_EMBEDDINGS=0
+ *  opts out of the download and stays lexical-only. */
+export function keylessEmbeddingProvider(
+  env: NodeJS.ProcessEnv = process.env,
+): EmbeddingProvider | undefined {
+  if (env.MARROW_LOCAL_EMBEDDINGS === "0") return undefined;
+  return new LocalEmbeddingProvider(env.MARROW_LOCAL_EMBEDDING_MODEL);
+}
+
 /** Build a Marrow core from DATABASE_URL, wiring providers from env if they are
  *  configured. distillation fails loud later if it is used without them. */
 export function createMarrow(databaseUrl: string | undefined = process.env.DATABASE_URL): Marrow {
@@ -2732,8 +2889,10 @@ export function createMarrow(databaseUrl: string | undefined = process.env.DATAB
   try {
     config = loadProviderConfig();
   } catch {
-    // providers are optional for ingest and reads; distill fails loud if used.
-    return new Marrow(store);
+    // No model key: model-driven work (distill, verify's deep pass) stays off
+    // and fails loud when used. Search stays semantic anyway: the local
+    // embedder needs no key, so the keyless README promise holds.
+    return new Marrow(store, undefined, keylessEmbeddingProvider());
   }
   // each provider is wired independently: a claude-only user has a model and
   // vision but no embedding endpoint, and distill (not vision) is what fails loud.

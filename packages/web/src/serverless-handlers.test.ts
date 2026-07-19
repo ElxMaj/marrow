@@ -158,3 +158,39 @@ describe("serverless route handlers", () => {
     });
   });
 });
+
+/** A request whose body is arbitrary bytes, not JSON.stringify of a value, so we
+ *  can exercise the oversized-body and malformed-JSON paths. */
+function rawReq(method: string, url: string, buf: Buffer): IncomingMessage {
+  const stream = Readable.from([buf]) as IncomingMessage & { method: string; url: string };
+  stream.method = method;
+  stream.url = url;
+  return stream;
+}
+
+describe("serverless error classification", () => {
+  it("answers a typed 4xx instead of a raw 500 for client faults", async () => {
+    const traceHandler = (await import("../api/trace/[nodeId]")).default;
+    const answerHandler = (await import("../api/answer")).default;
+
+    // an unknown trace id: core throws "not found", classified to 404 (not 500).
+    const traceRes = res();
+    await traceHandler(req("GET", "/api/trace/ent_does_not_exist"), traceRes);
+    expect(traceRes.statusCode).toBe(404);
+
+    // a wrong verb on a known route: 405 with the Allow header.
+    const methodRes = res();
+    await traceHandler(req("POST", "/api/trace/whatever"), methodRes);
+    expect(methodRes.statusCode).toBe(405);
+
+    // an oversized body: 413, never a 500.
+    const bigRes = res();
+    await answerHandler(rawReq("POST", "/api/answer", Buffer.alloc(1_000_001)), bigRes);
+    expect(bigRes.statusCode).toBe(413);
+
+    // a malformed JSON body: 400, never a 500.
+    const badJsonRes = res();
+    await answerHandler(rawReq("POST", "/api/answer", Buffer.from("not json{")), badJsonRes);
+    expect(badJsonRes.statusCode).toBe(400);
+  });
+});

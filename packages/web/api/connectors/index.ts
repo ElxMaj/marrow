@@ -2,13 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { encryptSecret } from "@marrowhq/core";
 
-import { READ_ONLY, connectorViews, getStore, readJson, sendJson } from "../_core.js";
+import { READ_ONLY, connectorViews, getStore, readJson, route, sendJson } from "../_core.js";
 
 // GET  /api/connectors — one row per connector: stored config merged with live
 //      sync state (last sync, items, ok/error/never, last error).
 // POST /api/connectors — upsert a connector config, encrypting the secret at
 //      rest before it touches the database. refused in a read-only demo.
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const store = getStore();
   if (req.method === "GET") {
     return sendJson(res, 200, await connectorViews(store));
@@ -33,3 +33,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   }
   sendJson(res, 405, { error: "method not allowed" });
 }
+
+export default route(handler);

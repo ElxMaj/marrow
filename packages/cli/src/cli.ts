@@ -8,6 +8,7 @@ import {
   loadPolicy,
   matchesNoDistillSource,
   normalizeTranscript,
+  renderTruthHtml,
   scrubEnabled,
   scrubSecrets,
 } from "@marrowhq/core";
@@ -40,8 +41,10 @@ const VALUE_FLAGS = new Set([
   "--days",
   "--debounce",
   "--decide",
+  "--depth",
   "--description",
   "--end",
+  "--hops",
   "--entity",
   "--evidence",
   "--image",
@@ -222,7 +225,8 @@ Usage: marrow <command> [args] [--json]
 Try it (no API key needed):
   migrate                     Set up or update the schema on your Postgres
   doctor [--json]             Check DATABASE_URL, Postgres, schema, and model
-  demo                        Run the hero slice end to end and explain it
+  demo [--force]              Run the hero slice in a FRESH database and explain it
+                              (writes fictional facts; refuses a brain holding real evidence)
   web [--open] [--port N]     Open the question-loop UI in your browser
 
 Read the room (task-scoped; every result carries status + provenance):
@@ -257,7 +261,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
 Bootstrap / maintain:
   loop "<task>" [--check] [--staged|--unstaged|--since <ref>] [--no-semantic]
                               Prepare a compact agent brief for one task
-  truth                       Show the product truth maintenance brief
+  truth [--html]              Show the product truth maintenance brief (--html for the morning-read artifact)
   verify                      Attack proposed facts: flag single-source, weak, or contradicting ones
   lint                        Sweep the graph for duplicates, contradictions, dead edges, and instruction smells
   synthesize [--days N]       What changed and what deserves attention over a window (default 7d)
@@ -330,6 +334,7 @@ const COMMAND_EXAMPLES: Record<string, string[]> = {
   drift: ["marrow drift --unstaged", "marrow drift --ci"],
   loop: ['marrow loop "implement password login" --check --unstaged'],
   graph: ["marrow graph", "marrow graph dec_1a2b --depth 2"],
+  truth: ["marrow truth", "marrow truth --html > brief.html"],
   runs: ["marrow runs --kind drift --status error", "marrow runs --limit 20"],
   distill: ["marrow distill ev_1a2b", "marrow distill --pending --limit 100"],
   retract: ['marrow retract dec_1a2b --reason "never actually decided"'],
@@ -514,8 +519,21 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       });
     }
 
-    case "truth":
-      return core.maintainTruth();
+    case "truth": {
+      const brief = await core.maintainTruth();
+      // --html renders the brief as a self-contained artifact a cron job can
+      // write to a file or email: the morning read, in the console's language.
+      if (rest.includes("--html")) {
+        const now = Date.now();
+        const consoleUrl = process.env.MARROW_CONSOLE_URL;
+        return renderTruthHtml(brief, {
+          now,
+          generatedAt: `${new Date(now).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+          ...(consoleUrl ? { consoleUrl } : {}),
+        });
+      }
+      return brief;
+    }
 
     case "verify":
       return core.verify();
@@ -695,15 +713,29 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
         trigger: ci ? "ci" : "cli",
       });
       if (ci) {
+        // file paths come from the prompt's "<path>:<start>-<end>" span. the
+        // path is the first whitespace-free token carrying line numbers, so a
+        // prose prefix ("drift: the code in ...") never leaks into file=.
         const annotations = result.created
           .filter((n): n is import("@marrowhq/shared").Question => n.kind === "question")
           .map((q) => {
-            const match = /^(.*):(\d+)-(\d+)/.exec(q.prompt);
+            const match = /(\S+):(\d+)-(\d+)/.exec(q.prompt);
             const file = match?.[1] ?? "";
             const line = match?.[2] ?? "1";
             return `::error file=${file},line=${line}::${q.prompt.replace(/\n/g, " ")}`;
           });
-        return { driftCi: { annotations, hasDrift: annotations.length > 0 } };
+        // a still-open catch matching the current diff is the same violation
+        // seen again: the gate stays red until a human accepts or dismisses it.
+        const openAnnotations = result.openMatches.map(
+          (m) =>
+            `::error file=${m.path},line=${m.lineStart}::drift still open: ${m.questionId} (resolve with marrow accept ${m.questionId} --text "..." or marrow dismiss ${m.questionId} --reason "...")`,
+        );
+        return {
+          driftCi: {
+            annotations: [...annotations, ...openAnnotations],
+            hasDrift: annotations.length + openAnnotations.length > 0,
+          },
+        };
       }
       return result;
     }
@@ -990,6 +1022,9 @@ function formatUndistilledBacklog(
 }
 
 export function formatResult(result: unknown): string {
+  // a command may return a pre-rendered string (e.g. `truth --html`); print it
+  // verbatim rather than JSON-quoting it.
+  if (typeof result === "string") return result;
   if (!result || typeof result !== "object") return JSON.stringify(result, null, 2);
   const r = result as Record<string, unknown>;
 
@@ -1271,16 +1306,17 @@ export function formatResult(result: unknown): string {
         contradictions: number;
         deadEdges: number;
         instructionSmells?: number;
+        outOfBoundsSpans?: number;
       };
     };
     if (rep.issues.length === 0) {
-      return "Lint: clean. No duplicates, contradictions, dead edges, or instruction smells.";
+      return "Lint: clean. No duplicates, contradictions, dead edges, instruction smells, or out-of-bounds spans.";
     }
     const lines = rep.issues.map(
       (issue) => `  [${issue.kind}] ${issue.detail}${dim(` · ${issue.nodeIds.join(", ")}`)}`,
     );
     return [
-      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.nearDuplicates ?? 0} near duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell`,
+      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.nearDuplicates ?? 0} near duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell, ${rep.counts.outOfBoundsSpans ?? 0} out-of-bounds span`,
       ...lines,
     ].join("\n");
   }
@@ -1368,13 +1404,31 @@ export function formatResult(result: unknown): string {
     return all.length === 0 ? "(Nothing found)" : all.map(formatNode).join("\n");
   }
 
-  // drift: { created, events }.
+  // drift: { created, events, openMatches }.
   if ("created" in r && Array.isArray(r.events)) {
     const created = asNodes(r.created);
     const events = (r.events as unknown[]).length;
-    if (created.length === 0)
+    const open = Array.isArray(r.openMatches)
+      ? (r.openMatches as { questionId: string; path: string }[])
+      : [];
+    // a still-open catch matching this diff must never read as all-clear.
+    const openLines = open.map(
+      (m) =>
+        `  [open catch] ${m.path} still contradicts a decided fact: ${m.questionId}\n    Next: marrow accept ${m.questionId} --text "..." or marrow dismiss ${m.questionId} --reason "..."`,
+    );
+    if (created.length === 0) {
+      if (open.length > 0) {
+        return [
+          `(No new drift; ${open.length} open catch${open.length === 1 ? "" : "es"} still pending.)`,
+          ...openLines,
+        ].join("\n");
+      }
       return events > 0 ? "(No new drift detected; prior catches logged)" : "(No drift detected)";
-    return `${created.map(formatNode).join("\n")}\n${events} catch event${events === 1 ? "" : "s"} recorded.`;
+    }
+    return [
+      `${created.map(formatNode).join("\n")}\n${events} catch event${events === 1 ? "" : "s"} recorded.`,
+      ...openLines,
+    ].join("\n");
   }
 
   // drift --ci: { driftCi: { annotations, hasDrift } }
@@ -1618,14 +1672,19 @@ export function formatResult(result: unknown): string {
   // trace to source: one or more spans. The label marks quotes as records of
   // the room, not instructions, for agents reading CLI output from hooks.
   if (Array.isArray(r.spans) || "spanText" in r) {
+    const v = r.verification as { verdict: string; reasons: string[] } | undefined;
+    const skeptic = v
+      ? `${dim(`Skeptic: ${v.verdict}${v.reasons.length > 0 ? ` (${v.reasons.join(", ")})` : ""}`)}\n\n`
+      : "";
     const spans = Array.isArray(r.spans) ? (r.spans as { source: string; spanText: string }[]) : [];
     if (spans.length > 0) {
-      return spans
-        .map((s) => `Source (verbatim record): ${s.source}\n  "${s.spanText}"`)
-        .join("\n\n");
+      return (
+        skeptic +
+        spans.map((s) => `Source (verbatim record): ${s.source}\n  "${s.spanText}"`).join("\n\n")
+      );
     }
-    if (r.spanText) return `Source: ${String(r.source)}\n  "${String(r.spanText)}"`;
-    return "No source spans.";
+    if (r.spanText) return `${skeptic}Source: ${String(r.source)}\n  "${String(r.spanText)}"`;
+    return `${skeptic}No source spans.`;
   }
 
   return JSON.stringify(result, null, 2);

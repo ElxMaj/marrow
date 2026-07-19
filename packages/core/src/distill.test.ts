@@ -258,6 +258,72 @@ describe("distillation", () => {
     await expect(core.traceToSource("dec_missing")).rejects.toThrow(/not found/);
   });
 
+  it("re-embeds an existing node that has no vector on the next distill (reconcile)", async () => {
+    const evId = await core.ingest({ text: gdyniaTranscript, source: "interviews/reembed.md" });
+    // a node committed with no embedding, exactly as a transient embed failure
+    // after the row's own commit would leave it. insertEntity does not embed.
+    const orphan = await store.insertEntity({
+      name: "reembed target",
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: evId, start: 0, end: 5 }],
+    });
+    expect(await store.hasEmbedding(orphan.id, "entity")).toBe(false);
+
+    // distilling the same evidence runs the reconcile pass over existing nodes.
+    await core.distill(evId);
+    expect(await store.hasEmbedding(orphan.id, "entity")).toBe(true);
+  });
+
+  it("traceToSource surfaces the skeptic's latest verdict, advisory and status-neutral", async () => {
+    const ev = await store.insertEvidence({ text: "auth notes here", source: "room/skeptic.md" });
+    const dec = await store.insertDecision({
+      title: "single-sourced claim",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: { value: 0.6, source: "model" },
+      provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+    });
+    // an earlier flag, then the latest verdict: trace reports only the latest.
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "survived",
+      reasons: [],
+    });
+    await store.insertVerification({
+      nodeId: dec.id,
+      nodeKind: "decision",
+      verdict: "flagged",
+      reasons: ["single_source"],
+    });
+
+    const trace = await core.traceToSource(dec.id);
+    expect(trace.verification).toEqual({
+      verdict: "flagged",
+      reasons: ["single_source"],
+      verifiedAt: expect.any(String),
+    });
+    // advisory only: the verdict never moves the node's status.
+    expect((await store.getDecision(dec.id))?.status).toBe("open");
+
+    // a node the skeptic never touched carries no verification field.
+    const clean = await core.traceToSource(
+      (
+        await store.insertDecision({
+          title: "unverified",
+          rationale: "",
+          constraint: false,
+          status: "open",
+          confidence: { value: 0.6, source: "model" },
+          provenance: [{ evidenceId: ev.id, start: 0, end: 4 }],
+        })
+      ).id,
+    );
+    expect(clean.verification).toBeUndefined();
+  });
+
   it("drops a node whose quote is not in the text, never storing empty provenance", async () => {
     const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
     const nodes = await core.distill(id);
@@ -304,6 +370,18 @@ describe("distillation", () => {
     const a = await core.distill(id);
     const b = await core.distill(id);
     expect(b.length).toBe(a.length);
+  });
+
+  it("does not duplicate nodes when two distills of the same evidence race", async () => {
+    const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
+    // without the per-evidence lock both passes read an empty `seen` set and each
+    // insert the full node set, so the graph ends up with two of every node. The
+    // lock serializes them: one creates, the other sees them present and skips.
+    const [a, b] = await Promise.all([core.distill(id), core.distill(id)]);
+    expect(a.length).toBe(b.length);
+    const all = await store.getNodesForEvidence(id);
+    // the discriminating assertion: a single distill's node count, not double it.
+    expect(all.length).toBe(a.length);
   });
 
   it("embeds each node with its model and dim", async () => {
