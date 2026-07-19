@@ -600,6 +600,19 @@ export class Marrow {
       traced(this.store, { kind: "distill", label: evidence.source }, async (report) => {
         const existing = await this.store.getNodesForEvidence(evidenceId);
         const seen = new Set(existing.map((node) => nodeKey(node, evidenceId)));
+        // reconcile: a node insert and its embedding write are separate
+        // transactions, so an earlier run could commit a node but fail to embed it
+        // (a transient embedding error). the dedupe skip below would then make that
+        // miss permanent, leaving a real fact invisible to semantic search. re-embed
+        // any existing node missing its vector so a re-distill of the same source
+        // repairs it. cheap: a no-op once every node is embedded.
+        if (this.embedding) {
+          for (const node of existing) {
+            if (!(await this.store.hasEmbedding(node.id, node.kind))) {
+              await this.embedNode(node.id, node.kind, this.embedTextForNode(node));
+            }
+          }
+        }
         const created: Distilled[] = [];
         let tokensIn = 0;
         let tokensOut = 0;
@@ -2747,6 +2760,21 @@ export class Marrow {
   /** Run every enabled connector's sync now. */
   async syncAllConnectors(): Promise<ConnectorSyncResult[]> {
     return new SyncEngine({ store: this.store }).runAll();
+  }
+
+  /** The text a node is embedded from, matching what each create path passes to
+   *  embedNode, so a reconcile re-embed produces the same vector. */
+  private embedTextForNode(node: Distilled): string {
+    switch (node.kind) {
+      case "entity":
+        return node.name;
+      case "decision":
+        return `${node.title} ${node.rationale}`;
+      case "goal":
+        return `${node.title} ${node.description ?? ""}`;
+      case "question":
+        return node.prompt;
+    }
   }
 
   private async embedNode(

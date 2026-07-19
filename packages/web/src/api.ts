@@ -353,6 +353,17 @@ export class ApiError extends Error {
   }
 }
 
+/** Validate an optional timestamp query param at the boundary, returning a
+ *  canonical ISO string. A bad value is rejected with a fixed 400 here, so it
+ *  never reaches Postgres as an uncastable timestamp whose raw error (engine,
+ *  column type, the reflected input) the classifier would otherwise echo. */
+function parseIsoParam(raw: string | null, name: string): string | undefined {
+  if (raw === null || raw === "") return undefined;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) throw new ApiError(400, `${name} must be an ISO-8601 timestamp`);
+  return new Date(t).toISOString();
+}
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -521,8 +532,8 @@ async function handle(
   // --- observability: the run trace ----------------------------------------
   if (path === "/api/metrics" && req.method === "GET") {
     const store = requireStore(resolved.store);
-    const since = url.searchParams.get("since") ?? undefined;
-    const until = url.searchParams.get("until") ?? undefined;
+    const since = parseIsoParam(url.searchParams.get("since"), "since");
+    const until = parseIsoParam(url.searchParams.get("until"), "until");
     const metrics: RunMetrics = await store.runMetrics({
       ...(since ? { since } : {}),
       ...(until ? { until } : {}),
@@ -534,7 +545,7 @@ async function handle(
     const kind = url.searchParams.get("kind") as RunKind | null;
     const status = url.searchParams.get("status") as RunStatus | null;
     const limitRaw = url.searchParams.get("limit");
-    const before = url.searchParams.get("before");
+    const before = parseIsoParam(url.searchParams.get("before"), "before");
     const limit = limitRaw ? Number(limitRaw) : undefined;
     const runs: RunRecord[] = await store.listRuns({
       ...(kind ? { kind } : {}),

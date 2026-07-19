@@ -190,6 +190,15 @@ describe("web api server", () => {
     expect(res.status).toBe(404);
   });
 
+  it("rejects a malformed timestamp param with a fixed 400, never reflecting a DB error", async () => {
+    const res = await fetch(`${base}/api/metrics?since=not-a-date`);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("since must be an ISO-8601 timestamp");
+    // the raw Postgres cast error (engine, column type, reflected input) never leaks.
+    expect(JSON.stringify(body)).not.toMatch(/invalid input syntax|for type timestamp/i);
+  });
+
   it("GET /api/runs with a non-positive or fractional limit falls back to the default, not a 500", async () => {
     for (const bad of ["-5", "0", "2.5"]) {
       const res = await fetch(`${base}/api/runs?limit=${bad}`);
