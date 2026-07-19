@@ -38,6 +38,8 @@
   --accent: var(--gold-500);
   --accent-hover: var(--gold-400);
   --accent-ink: #1a1206; /* text on a gold fill */
+  --decided-ink: #10231a; /* text on the sage decided fill (dark on the light dark-theme fill) */
+  --contested-ink: #2c110b; /* text on the clay contested fill */
 
   /* status hues — each = fg + tinted bg + border. NEVER gold. */
   --decided: #8bb88a; /* sage, settled */
@@ -127,6 +129,8 @@
   --accent: var(--gold-500);
   --accent-hover: var(--gold-600);
   --accent-ink: #fbf7ee;
+  --decided-ink: #f4efe4; /* light theme: bone on the dark forest decided fill */
+  --contested-ink: #f4efe4; /* light theme: bone on the dark clay contested fill */
   --gold-border: rgba(176, 130, 46, 0.34);
   --gold-wash: rgba(176, 130, 46, 0.1);
 
@@ -1253,7 +1257,7 @@ h2 {
   align-items: center;
   gap: var(--sp-2);
   background: var(--decided);
-  color: #10231a;
+  color: var(--decided-ink);
   font-size: var(--fs-dense);
   font-weight: var(--fw-strong);
   padding: 9px var(--sp-4);
@@ -2095,7 +2099,7 @@ h2 {
   border-color: var(--accent);
 }
 .chip.warn.active {
-  color: #fff;
+  color: var(--contested-ink);
   background: var(--contested);
   border-color: var(--contested);
 }
