@@ -1003,6 +1003,36 @@ describe("dedupe delete completeness", () => {
     expect((await store.latestVerification(canonical.id))?.verdict).toBe("survived");
   });
 
+  it("re-points a goal's entity_id on merge so deleting a goal-referenced entity does not trip the FK", async () => {
+    const { canonical, dupe } = await seedDupePair();
+    const ev = await store.insertEvidence({ text: "the goal source", source: "room/goal.md" });
+    const prov = [{ evidenceId: ev.id, start: 0, end: 3 }];
+    const merged = await store.insertGoal({
+      title: "make billing self-serve",
+      goalType: "product",
+      entityId: dupe.id,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+
+    // must not throw a foreign-key violation; the goal follows the merge.
+    await store.deleteEntity(dupe.id, canonical.id);
+    expect((await store.getGoal(merged.id))?.entityId).toBe(canonical.id);
+
+    // a plain removal (no canonical) detaches the goal rather than FK-aborting.
+    const orphaned = await store.insertGoal({
+      title: "retire the old portal",
+      goalType: "product",
+      entityId: canonical.id,
+      status: "open",
+      confidence,
+      provenance: prov,
+    });
+    await store.deleteEntity(canonical.id);
+    expect((await store.getGoal(orphaned.id))?.entityId).toBeUndefined();
+  });
+
   it("drops edges that would duplicate an existing canonical edge, and self-loops", async () => {
     const { canonical, dupe, decision } = await seedDupePair();
     // the canonical node already has the same relation to the decision...

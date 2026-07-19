@@ -190,6 +190,14 @@ describe("web api server", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET /api/runs with a non-positive or fractional limit falls back to the default, not a 500", async () => {
+    for (const bad of ["-5", "0", "2.5"]) {
+      const res = await fetch(`${base}/api/runs?limit=${bad}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(await res.json())).toBe(true);
+    }
+  });
+
   it("a non-api route serves the SPA index.html", async () => {
     const res = await fetch(`${base}/some/client/route`);
     expect(res.status).toBe(200);

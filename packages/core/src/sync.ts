@@ -260,9 +260,12 @@ export class SyncEngine {
       error = err instanceof Error ? err.message : String(err);
     }
 
-    // prefer the high-water mark; fall back to wall clock only for connectors
-    // that do not report per-item timestamps, preserving their behavior.
-    const cursor = watermark ? watermark.toISOString() : ranAt;
+    // prefer the high-water mark. with no new timestamp this run (an idle run,
+    // or a connector that reports none), keep the previous cursor rather than
+    // jumping to the local wall clock: a wall-clock cursor skips items posted
+    // before the run that only became visible after it. only the very first
+    // run, with no prior cursor, falls back to wall clock.
+    const cursor = watermark ? watermark.toISOString() : (state?.cursor ?? ranAt);
 
     const latencyMs = Date.now() - start;
     const run = await this.deps.store.recordRun({

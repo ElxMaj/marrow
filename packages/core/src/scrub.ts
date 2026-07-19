@@ -28,6 +28,9 @@ const DETECTORS: { kind: string; pattern: RegExp }[] = [
     pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g,
   },
   { kind: "provider-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
+  // Stripe and Stripe-style secret/restricted keys use an underscore family
+  // (sk_live_, sk_test_, rk_live_, rk_test_), which the sk- rule above misses.
+  { kind: "provider-key", pattern: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b/g },
   { kind: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
   { kind: "jwt", pattern: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{10,}\b/g },
   {

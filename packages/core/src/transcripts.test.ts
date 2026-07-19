@@ -70,6 +70,25 @@ describe("normalizeTranscript: VTT", () => {
     expect(r.text).not.toMatch(/WEBVTT|NOTE/);
   });
 
+  it("keeps cue payload beginning with NOTE/STYLE instead of dropping it as a comment", () => {
+    const raw = [
+      "WEBVTT",
+      "",
+      "NOTE a real between-cue comment to skip",
+      "",
+      "1",
+      "00:00:01.000 --> 00:00:03.000",
+      "Alice: NOTE we must ship magic links this week.",
+      "",
+    ].join("\n");
+    const r = normalizeTranscript(raw, { filename: "zoom.vtt" });
+    // the spoken line survives verbatim...
+    expect(r.text).toBe("Alice: NOTE we must ship magic links this week.");
+    expect(r.turns).toBe(1);
+    // ...while the genuine between-cue NOTE comment is still skipped.
+    expect(r.text).not.toContain("between-cue comment");
+  });
+
   it("collapses consecutive same-speaker cues into one block, so a long monologue reads as one turn", () => {
     const raw = [
       "WEBVTT",
