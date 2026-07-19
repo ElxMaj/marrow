@@ -82,7 +82,10 @@ export {
   createConceptEmbedding,
   createDemoEmbedding,
   runDemo,
+  checkDemoBrain,
   DEMO_INTERVIEW,
+  DEMO_SOURCE,
+  type DemoBrainCheck,
   type DemoResult,
 } from "./demo.js";
 export { scanRepo, type RepoCandidate } from "./onboard.js";

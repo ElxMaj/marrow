@@ -221,7 +221,8 @@ Usage: marrow <command> [args] [--json]
 Try it (no API key needed):
   migrate                     Set up or update the schema on your Postgres
   doctor [--json]             Check DATABASE_URL, Postgres, schema, and model
-  demo                        Run the hero slice end to end and explain it
+  demo [--force]              Run the hero slice in a FRESH database and explain it
+                              (writes fictional facts; refuses a brain holding real evidence)
   web [--open] [--port N]     Open the question-loop UI in your browser
 
 Read the room (task-scoped; every result carries status + provenance):

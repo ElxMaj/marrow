@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createDemoEmbedding, createDemoModel, runDemo } from "./demo.js";
+import { checkDemoBrain, createDemoEmbedding, createDemoModel, runDemo } from "./demo.js";
 import { Marrow } from "./marrow.js";
 import { Store } from "./store.js";
 
@@ -66,5 +66,36 @@ describe("hero demo", () => {
       ),
     ).toBe(true);
     expect(result.openQuestions.some((q) => /annual billing/i.test(q.prompt))).toBe(true);
+  });
+});
+
+describe("demo brain guard", () => {
+  // The guard needs a truly empty evidence table; the shared suite leaves
+  // evidence alone (append-only even in spirit), so this block manages it.
+  beforeEach(async () => {
+    await admin.query("truncate evidence restart identity cascade");
+  });
+
+  it("an empty database is fair game", async () => {
+    expect(await checkDemoBrain(store)).toEqual({ ok: true });
+  });
+
+  it("refuses a brain that holds real evidence: the demo must never pollute it", async () => {
+    await store.insertEvidence({ text: "real standup notes", source: "standups/real.md" });
+    const check = await checkDemoBrain(store);
+    expect(check).toEqual({ ok: false, reason: "has-real-evidence", otherCount: 1 });
+  });
+
+  it("refuses to duplicate itself into a brain the demo already ran in", async () => {
+    await runDemo(freshCore(), interview);
+    const check = await checkDemoBrain(store);
+    expect(check).toEqual({ ok: false, reason: "demo-already-ran" });
+  });
+
+  it("a mixed brain counts only the non-demo evidence", async () => {
+    await runDemo(freshCore(), interview);
+    await store.insertEvidence({ text: "real pricing call", source: "notes/pricing.md" });
+    const check = await checkDemoBrain(store);
+    expect(check).toEqual({ ok: false, reason: "has-real-evidence", otherCount: 1 });
   });
 });
