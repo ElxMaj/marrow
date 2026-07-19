@@ -355,6 +355,18 @@ describe("distillation", () => {
     expect(b.length).toBe(a.length);
   });
 
+  it("does not duplicate nodes when two distills of the same evidence race", async () => {
+    const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
+    // without the per-evidence lock both passes read an empty `seen` set and each
+    // insert the full node set, so the graph ends up with two of every node. The
+    // lock serializes them: one creates, the other sees them present and skips.
+    const [a, b] = await Promise.all([core.distill(id), core.distill(id)]);
+    expect(a.length).toBe(b.length);
+    const all = await store.getNodesForEvidence(id);
+    // the discriminating assertion: a single distill's node count, not double it.
+    expect(all.length).toBe(a.length);
+  });
+
   it("embeds each node with its model and dim", async () => {
     const id = await core.ingest({ text: gdyniaTranscript, source: "x" });
     const nodes = await core.distill(id);

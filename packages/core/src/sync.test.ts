@@ -135,6 +135,26 @@ describe("SyncEngine.runConnectorInstance", () => {
     expect(n.rows[0]?.n).toBe(1);
   });
 
+  it("treats an unparseable source timestamp as missing, not an Invalid-Date wedge", async () => {
+    const engine = new SyncEngine({ store });
+    // a connector item whose source date does not parse: new Date(...) is a
+    // truthy Invalid Date. Untreated it pins the watermark (no real date exceeds
+    // NaN) and then crashes the unguarded watermark.toISOString(), so the cursor
+    // never advances and every later run refetches and crashes identically.
+    const conn = new FakeConnector([
+      { text: "item with a malformed date", source: "fake:baddate", timestamp: new Date("nope") },
+    ]);
+
+    const result = await engine.runConnectorInstance("fake", conn);
+    expect(result.status).toBe("ok"); // did NOT throw on toISOString()
+    expect(result.itemsIngested).toBe(1);
+
+    const state = await store.getConnectorState("fake");
+    // cursor fell back to a valid wall-clock ISO instead of an Invalid Date.
+    expect(state?.cursor).toBeDefined();
+    expect(Number.isNaN(new Date(state?.cursor ?? "").getTime())).toBe(false);
+  });
+
   it("advances the cursor to the high-water mark of fetched items, not wall-clock time", async () => {
     const engine = new SyncEngine({ store });
     // items carry source-side timestamps; the newest one is the watermark, and
@@ -371,6 +391,64 @@ describe("Store.withConnectorLock", () => {
     ).rejects.toThrow("boom");
     // a subsequent acquire must not hang, proving the lock was released.
     const ran = await store.withConnectorLock("fake", async () => "ok");
+    expect(ran).toBe("ok");
+  });
+});
+
+describe("Store.withDistillLock", () => {
+  it("serializes two distills of the same evidence: the second waits for the first", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+
+    const a = store.withDistillLock("ev_1", async () => {
+      order.push("a-acquired");
+      await held;
+      order.push("a-releasing");
+    });
+    await new Promise((r) => setTimeout(r, 50)); // let A acquire first
+
+    const b = store.withDistillLock("ev_1", async () => {
+      order.push("b-acquired");
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    // while A holds the evidence lock, B is blocked and has not run.
+    expect(order).toEqual(["a-acquired"]);
+
+    release();
+    await Promise.all([a, b]);
+    expect(order).toEqual(["a-acquired", "a-releasing", "b-acquired"]);
+  });
+
+  it("does not block distills of different evidence rows", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+
+    const a = store.withDistillLock("ev_a", async () => {
+      order.push("a");
+      await held;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    // a different evidence id's lock is independent, so this runs immediately.
+    await store.withDistillLock("ev_b", async () => {
+      order.push("b");
+    });
+    expect(order).toEqual(["a", "b"]);
+
+    release();
+    await a;
+  });
+
+  it("releases the evidence lock even when the body throws", async () => {
+    await expect(
+      store.withDistillLock("ev_boom", async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    const ran = await store.withDistillLock("ev_boom", async () => "ok");
     expect(ran).toBe("ok");
   });
 });
