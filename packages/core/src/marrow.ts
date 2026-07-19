@@ -47,6 +47,7 @@ import {
   createVisionProvider,
   loadProviderConfig,
 } from "./providers/config.js";
+import { LocalEmbeddingProvider } from "./providers/local-embedding.js";
 import {
   type EmbeddingProvider,
   type ModelProvider,
@@ -2677,7 +2678,20 @@ export class Marrow {
     text: string,
   ): Promise<void> {
     if (!this.embedding) return;
-    const result = await this.embedding.embed([text]);
+    let result;
+    try {
+      result = await this.embedding.embed([text]);
+    } catch (err) {
+      // An embedder that cannot run must not kill a write: the node lands
+      // without a vector (findable lexically) and the degraded mode is said
+      // once per process, never silently.
+      if (!this.embedFailureAnnounced) {
+        this.embedFailureAnnounced = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`marrow: embedding unavailable (${msg}); storing without vectors\n`);
+      }
+      return;
+    }
     const vector = result.vectors[0];
     if (!vector) return;
     await this.store.insertEmbedding({
@@ -2691,15 +2705,39 @@ export class Marrow {
 
   /** Embed a search query with the configured provider, or undefined if there is
    *  no embedder or it returns nothing. used by search to rank semantically. */
+  private embedFailureAnnounced = false;
   private async embedQuery(query: string): Promise<number[] | undefined> {
     if (!this.embedding) return undefined;
-    const result = await this.embedding.embed([query]);
-    return result.vectors[0];
+    try {
+      const result = await this.embedding.embed([query]);
+      return result.vectors[0];
+    } catch (err) {
+      // An embedder that cannot run (optional package missing, model download
+      // offline, endpoint down) must not kill search. Degrade to lexical, but
+      // never silently: say so once per process so the mode is visible.
+      if (!this.embedFailureAnnounced) {
+        this.embedFailureAnnounced = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`marrow: embedding unavailable (${msg}); searching lexical-only\n`);
+      }
+      return undefined;
+    }
   }
 
   async close(): Promise<void> {
     await this.store.close();
   }
+}
+
+/** Embeddings need no model key. A user with no provider config at all still
+ *  gets semantic search from the zero-config in-process local model (a one-time
+ *  ~25MB download, announced on first use, then cached). MARROW_LOCAL_EMBEDDINGS=0
+ *  opts out of the download and stays lexical-only. */
+export function keylessEmbeddingProvider(
+  env: NodeJS.ProcessEnv = process.env,
+): EmbeddingProvider | undefined {
+  if (env.MARROW_LOCAL_EMBEDDINGS === "0") return undefined;
+  return new LocalEmbeddingProvider(env.MARROW_LOCAL_EMBEDDING_MODEL);
 }
 
 /** Build a Marrow core from DATABASE_URL, wiring providers from env if they are
@@ -2710,8 +2748,10 @@ export function createMarrow(databaseUrl: string | undefined = process.env.DATAB
   try {
     config = loadProviderConfig();
   } catch {
-    // providers are optional for ingest and reads; distill fails loud if used.
-    return new Marrow(store);
+    // No model key: model-driven work (distill, verify's deep pass) stays off
+    // and fails loud when used. Search stays semantic anyway: the local
+    // embedder needs no key, so the keyless README promise holds.
+    return new Marrow(store, undefined, keylessEmbeddingProvider());
   }
   // each provider is wired independently: a claude-only user has a model and
   // vision but no embedding endpoint, and distill (not vision) is what fails loud.

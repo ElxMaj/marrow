@@ -99,6 +99,25 @@ describe("search is semantic, not substring", () => {
     const runs = await store.listRuns({ kind: "search", limit: 1 });
     expect(runs[0]?.metadata).toMatchObject({ mode: "keyword" });
   });
+
+  it("an embedder that throws degrades search to lexical instead of killing it", async () => {
+    // The keyless default wires the local model; if its optional package is
+    // missing or the one-time download is offline, search must still answer.
+    class BrokenEmbedding {
+      readonly model = "broken";
+      embed(): Promise<never> {
+        return Promise.reject(new Error("transformers not installed"));
+      }
+    }
+    const core = new Marrow(store, undefined, new BrokenEmbedding());
+    const id = await seed(core, "decision", "magic links, no shared passwords");
+
+    const hits = await core.search("magic links", 5);
+    expect(hits.map((n) => n.id)).toContain(id);
+
+    const runs = await store.listRuns({ kind: "search", limit: 1 });
+    expect(runs[0]?.metadata).toMatchObject({ mode: "keyword" });
+  });
 });
 
 describe("current facts outrank retired facts", () => {
