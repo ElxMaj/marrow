@@ -1258,16 +1258,17 @@ export function formatResult(result: unknown): string {
         contradictions: number;
         deadEdges: number;
         instructionSmells?: number;
+        outOfBoundsSpans?: number;
       };
     };
     if (rep.issues.length === 0) {
-      return "Lint: clean. No duplicates, contradictions, dead edges, or instruction smells.";
+      return "Lint: clean. No duplicates, contradictions, dead edges, instruction smells, or out-of-bounds spans.";
     }
     const lines = rep.issues.map(
       (issue) => `  [${issue.kind}] ${issue.detail}${dim(` · ${issue.nodeIds.join(", ")}`)}`,
     );
     return [
-      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.nearDuplicates ?? 0} near duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell`,
+      `Lint: ${rep.counts.duplicateNodes} duplicate, ${rep.counts.nearDuplicates ?? 0} near duplicate, ${rep.counts.contradictions} contradiction, ${rep.counts.deadEdges} dead edge, ${rep.counts.instructionSmells ?? 0} instruction smell, ${rep.counts.outOfBoundsSpans ?? 0} out-of-bounds span`,
       ...lines,
     ].join("\n");
   }

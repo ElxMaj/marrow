@@ -273,7 +273,8 @@ export interface LintIssue {
     | "near_duplicate_nodes"
     | "contradiction"
     | "dead_edge"
-    | "instruction_smell";
+    | "instruction_smell"
+    | "out_of_bounds_span";
   detail: string;
   nodeIds: string[];
 }
@@ -287,6 +288,7 @@ export interface LintReport {
     contradictions: number;
     deadEdges: number;
     instructionSmells: number;
+    outOfBoundsSpans: number;
   };
 }
 
@@ -2135,6 +2137,17 @@ export class Marrow {
       });
     }
 
+    // 5. out-of-bounds spans: provenance whose quote renders blank or
+    //    truncated because the span falls outside its evidence text. New
+    //    inserts are rejected at the store; this finds legacy rows.
+    for (const span of await this.store.outOfBoundsSpans()) {
+      issues.push({
+        kind: "out_of_bounds_span",
+        detail: `${span.nodeKind} ${span.nodeId} cites span [${span.start}-${span.end}] outside evidence ${span.evidenceId}: the quote renders empty or truncated`,
+        nodeIds: [span.nodeId],
+      });
+    }
+
     return {
       issues,
       counts: {
@@ -2143,6 +2156,7 @@ export class Marrow {
         contradictions: issues.filter((issue) => issue.kind === "contradiction").length,
         deadEdges: issues.filter((issue) => issue.kind === "dead_edge").length,
         instructionSmells: issues.filter((issue) => issue.kind === "instruction_smell").length,
+        outOfBoundsSpans: issues.filter((issue) => issue.kind === "out_of_bounds_span").length,
       },
     };
   }

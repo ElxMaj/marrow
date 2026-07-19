@@ -1951,6 +1951,36 @@ export class Store {
     }));
   }
 
+  /** Legacy hygiene: provenance rows whose span falls outside their evidence
+   *  text (inserted before the choke-point guard existed). Each is a fact
+   *  whose quote renders blank or truncated; lint surfaces them for a human. */
+  async outOfBoundsSpans(
+    limit = 100,
+  ): Promise<
+    { nodeId: string; nodeKind: string; evidenceId: string; start: number; end: number }[]
+  > {
+    const res = await this.pool.query<{
+      node_id: string;
+      node_kind: string;
+      evidence_id: string;
+      span_start: number;
+      span_end: number;
+    }>(
+      `select p.node_id, p.node_kind, p.evidence_id, p.span_start, p.span_end
+       from provenance p join evidence e on e.id = p.evidence_id
+       where p.span_start < 0 or p.span_end <= p.span_start or p.span_end > length(e.text)
+       limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      nodeId: row.node_id,
+      nodeKind: row.node_kind,
+      evidenceId: row.evidence_id,
+      start: row.span_start,
+      end: row.span_end,
+    }));
+  }
+
   private async insertProvenance(
     client: pg.PoolClient,
     nodeId: string,
@@ -1958,6 +1988,23 @@ export class Store {
     provenance: Provenance,
   ): Promise<void> {
     for (const span of provenance) {
+      // No fact without a real quote: a span must land inside its evidence
+      // text. A span past the end (or empty) would render as a blank or
+      // truncated quote, a fact with no verbatim backing. Every insert path
+      // funnels through here, so the rule is enforced at one choke point.
+      const ev = await client.query<{ len: number }>(
+        "select length(text)::int as len from evidence where id = $1",
+        [span.evidenceId],
+      );
+      const len = ev.rows[0]?.len;
+      if (len === undefined) {
+        throw new Error(`provenance: evidence ${span.evidenceId} not found`);
+      }
+      if (span.start < 0 || span.end <= span.start || span.end > len) {
+        throw new Error(
+          `provenance: span [${span.start}-${span.end}] falls outside evidence ${span.evidenceId} (${len} chars); no fact without a real quote`,
+        );
+      }
       // idempotent: the same (node, evidence, span) link is inserted at most
       // once (unique index in 0002), so a retry or a re-promote never duplicates
       // provenance. evidence itself is untouched; this is the link table.

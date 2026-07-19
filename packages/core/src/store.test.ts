@@ -242,6 +242,34 @@ describe("Store", () => {
     expect(round?.provenance).toHaveLength(1);
   });
 
+  it("rejects a provenance span that falls outside its evidence text", async () => {
+    // no fact without a real quote: a span past the end renders as a blank or
+    // truncated quote, so the store refuses it on every insert path.
+    const text = "ten chars!";
+    const ev = await store.insertEvidence({ text, source: "room/short.md" });
+    const draft = (span: { start: number; end: number }) => ({
+      name: "broken quote",
+      status: "open" as const,
+      confidence: { value: 0.5, source: "model" as const },
+      provenance: [{ evidenceId: ev.id, ...span }],
+    });
+    await expect(store.insertEntity(draft({ start: 0, end: 500 }))).rejects.toThrow(
+      /outside evidence/,
+    );
+    // negative starts are refused upstream by the draft schema; still an error.
+    await expect(store.insertEntity(draft({ start: -2, end: 4 }))).rejects.toThrow();
+    await expect(store.insertEntity(draft({ start: 4, end: 4 }))).rejects.toThrow(
+      /outside evidence/,
+    );
+    // the boundary itself is fine: the full text is a real quote.
+    const good = await store.insertEntity(draft({ start: 0, end: text.length }));
+    expect(good.provenance).toHaveLength(1);
+    // attaching to an existing node goes through the same choke point.
+    await expect(
+      store.addProvenance(good.id, "entity", [{ evidenceId: ev.id, start: 2, end: 999 }]),
+    ).rejects.toThrow(/outside evidence/);
+  });
+
   it("records catch events and lists them by decision", async () => {
     const ev = await store.insertEvidence({ text: "decided", source: "eval" });
     const decision = await store.insertDecision({
