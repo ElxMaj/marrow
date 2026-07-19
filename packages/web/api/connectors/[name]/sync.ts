@@ -2,14 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { SyncEngine } from "@marrowhq/core";
 
-import { READ_ONLY, getStore, sendJson } from "../../_core.js";
+import { READ_ONLY, getStore, route, sendJson } from "../../_core.js";
 
 // POST /api/connectors/:name/sync — run one connector now: pull since its
 // cursor, dedup, ingest new items as evidence, advance the cursor, record a
 // connector_sync run. the whole automatic-flow story, on demand. the engine
 // catches fetch errors and returns an error result, so a bad token is a visible
 // outcome, not a crash.
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "POST") return sendJson(res, 405, { error: "method not allowed" });
   if (READ_ONLY)
     return sendJson(res, 403, { error: "this is a read-only demo; writes are disabled" });
@@ -22,3 +22,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const result = await new SyncEngine({ store }).runConnector(name);
   sendJson(res, 200, result);
 }
+
+export default route(handler);

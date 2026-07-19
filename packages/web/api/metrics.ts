@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { getStore, sendJson } from "./_core.js";
+import { getStore, route, sendJson } from "./_core.js";
 
 // GET /api/metrics — aggregate observability over an optional window: counts,
 // error rate, token totals, cost, and latency percentiles. mirrors
 // store.runMetrics; the dashboard header reads it.
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "GET") return sendJson(res, 405, { error: "method not allowed" });
   const url = new URL(req.url ?? "/", "http://localhost");
   const since = url.searchParams.get("since") ?? undefined;
@@ -16,3 +16,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     await getStore().runMetrics({ ...(since ? { since } : {}), ...(until ? { until } : {}) }),
   );
 }
+
+export default route(handler);

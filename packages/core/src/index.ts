@@ -4,6 +4,7 @@
 export {
   Marrow,
   createMarrow,
+  keylessEmbeddingProvider,
   type IngestInput,
   type TraceSpan,
   type TraceResult,
@@ -12,6 +13,7 @@ export {
   type NeighborsBrief,
   type GraphEdge,
   type BrainGraph,
+  type DriftScanResult,
   type VerifyResult,
   type VerifyReport,
   type LintIssue,
@@ -33,6 +35,7 @@ export {
 export { findDuplicateTitles } from "./lint.js";
 export { scrubEnabled, scrubSecrets, type ScrubFinding, type ScrubResult } from "./scrub.js";
 export { synthHeadline, type SynthCounts } from "./synthesize.js";
+export { renderTruthHtml, escapeHtml, relativeTime, type TruthHtmlOptions } from "./brief-html.js";
 export {
   Store,
   createStore,
@@ -81,7 +84,10 @@ export {
   createConceptEmbedding,
   createDemoEmbedding,
   runDemo,
+  checkDemoBrain,
   DEMO_INTERVIEW,
+  DEMO_SOURCE,
+  type DemoBrainCheck,
   type DemoResult,
 } from "./demo.js";
 export { scanRepo, type RepoCandidate } from "./onboard.js";

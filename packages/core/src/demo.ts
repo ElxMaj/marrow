@@ -2,6 +2,7 @@ import { type Decision, type Question } from "@marrowhq/shared";
 
 import { type Distilled } from "./distill.js";
 import { type Marrow, type TraceResult } from "./marrow.js";
+import { type Store } from "./store.js";
 import {
   type EmbeddingProvider,
   type EmbeddingResult,
@@ -159,6 +160,28 @@ export interface DemoResult {
   openQuestions: Question[];
 }
 
+/** The evidence source label every demo write carries. The brain guard uses it
+ *  to tell a fresh database, a demo re-run, and a real brain apart. */
+export const DEMO_SOURCE = "interviews/design-partner.md";
+
+export type DemoBrainCheck =
+  | { ok: true }
+  | { ok: false; reason: "has-real-evidence"; otherCount: number }
+  | { ok: false; reason: "demo-already-ran" };
+
+/**
+ * The demo writes fictional product facts, and evidence is append-only: there
+ * is no undo. So the demo refuses to write into a brain that holds anything
+ * real, and refuses to duplicate itself into a brain it already ran in, unless
+ * the caller forces it. An empty database is always fine.
+ */
+export async function checkDemoBrain(store: Store): Promise<DemoBrainCheck> {
+  const { total, other } = await store.evidenceCounts(DEMO_SOURCE);
+  if (total === 0) return { ok: true };
+  if (other > 0) return { ok: false, reason: "has-real-evidence", otherCount: other };
+  return { ok: false, reason: "demo-already-ran" };
+}
+
 /**
  * The scripted slice: ingest the interview, distill it, surface a question, the
  * developer answers (the only path to decided), and the free-trial decision
@@ -167,7 +190,7 @@ export interface DemoResult {
 export async function runDemo(core: Marrow, interview: string): Promise<DemoResult> {
   const { nodes } = await core.ingestAndDistill({
     text: interview,
-    source: "interviews/design-partner.md",
+    source: DEMO_SOURCE,
   });
 
   const decision = nodes.find((n): n is Decision => n.kind === "decision");

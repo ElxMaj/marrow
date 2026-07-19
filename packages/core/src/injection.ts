@@ -17,6 +17,12 @@ const FAMILIES: { smell: InstructionSmell; patterns: RegExp[] }[] = [
     smell: "agent_directive",
     patterns: [
       /\b(?:ignore|disregard|forget)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|all)\b[^.\n]{0,40}\b(?:instructions?|rules?|context|prompts?)\b/i,
+      // the anchor-as-object form: "ignore the above and <do X>", "disregard
+      // everything above". The directional anchor is the object with no trailing
+      // instructions/rules noun, so the stricter pattern above misses one of the
+      // most common override phrasings. Advisory only, so a benign "ignore the
+      // section above" tripping the badge is the acceptable side of the tradeoff.
+      /\b(?:ignore|disregard|forget)\b[^.\n]{0,30}\b(?:above|previous|prior|earlier)\b/i,
       /\byou must now\b/i,
       /\bnew instructions?\s*:/i,
       /\bsystem prompt\b/i,

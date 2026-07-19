@@ -11,6 +11,7 @@ import {
   createModelProvider,
   loadProviderConfig,
 } from "./providers/config.js";
+import { keylessEmbeddingProvider } from "./marrow.js";
 import { LocalEmbeddingProvider } from "./providers/local-embedding.js";
 import {
   OpenAICompatibleAdapter,
@@ -183,5 +184,29 @@ describe("provider interface", () => {
     // be possible via a zero-config local embedder (kills the activation cliff).
     const provider = createEmbeddingProvider({ ...config, embeddingBaseURL: undefined });
     expect(provider).toBeInstanceOf(LocalEmbeddingProvider);
+  });
+});
+
+describe("keyless embedding wiring", () => {
+  it("no provider config at all still wires the local embedder: search stays semantic keyless", () => {
+    // The audit's blocker: loadProviderConfig throws keyless BEFORE the
+    // embedder (which needs no key) was reached, so every natural-language
+    // query silently returned nothing. The keyless path must wire the local
+    // model. Constructing it costs nothing; the download happens on first
+    // embed only, announced on stderr.
+    const provider = keylessEmbeddingProvider({});
+    expect(provider).toBeInstanceOf(LocalEmbeddingProvider);
+  });
+
+  it("MARROW_LOCAL_EMBEDDINGS=0 opts out of the download and stays lexical-only", () => {
+    expect(keylessEmbeddingProvider({ MARROW_LOCAL_EMBEDDINGS: "0" })).toBeUndefined();
+  });
+
+  it("honors the local model override with no other config", () => {
+    const provider = keylessEmbeddingProvider({
+      MARROW_LOCAL_EMBEDDING_MODEL: "custom/model",
+    });
+    expect(provider).toBeInstanceOf(LocalEmbeddingProvider);
+    expect((provider as LocalEmbeddingProvider).model).toBe("custom/model");
   });
 });

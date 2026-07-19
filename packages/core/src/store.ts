@@ -40,6 +40,11 @@ const { Pool } = pg;
 // space (second key = hashtext(name)) cannot collide with another lock usage.
 const CONNECTOR_LOCK_NS = 19794; // "MR", for Marrow
 
+// A separate namespace for the per-evidence distill lock, so a distill lock
+// (second key = hashtext(evidenceId)) can never collide with a connector lock
+// that happens to hash a name to the same second key.
+const DISTILL_LOCK_NS = 19795;
+
 // Draft inputs. The Store generates id, createdAt and updatedAt and sets kind,
 // so callers pass only the fields they own. Every distilled draft must carry
 // provenance: there is no path to a node without a source span.
@@ -1004,6 +1009,25 @@ export class Store {
     return id;
   }
 
+  /** Counts for the demo's brain guard: how much evidence exists at all, and
+   *  how much PRIMARY room content came from somewhere other than the given
+   *  fixture source. Answer records (source answers/...) are derivative: the
+   *  loop writes one for every promote, including the demo's own, so they
+   *  never mark a brain as real on their own. Evidence is append-only, so a
+   *  fixture writing into a real brain is permanent; the caller refuses
+   *  before that happens. */
+  async evidenceCounts(excludeSource?: string): Promise<{ total: number; other: number }> {
+    const total = await this.pool.query<{ n: number }>("select count(*)::int as n from evidence");
+    const other =
+      excludeSource === undefined
+        ? total
+        : await this.pool.query<{ n: number }>(
+            "select count(*)::int as n from evidence where source <> $1 and source not like 'answers/%'",
+            [excludeSource],
+          );
+    return { total: total.rows[0]?.n ?? 0, other: other.rows[0]?.n ?? 0 };
+  }
+
   /** Search raw evidence text. used to confirm an answer was recorded verbatim. */
   async searchEvidence(query: string, limit = 20): Promise<Evidence[]> {
     const res = await this.pool.query<{
@@ -1182,6 +1206,18 @@ export class Store {
         nodeId,
         canonicalId,
       ]);
+    }
+    // a goal's entity_id is a real foreign key (goal serves an entity). when the
+    // entity being removed is referenced by a goal, re-point the goal to the
+    // canonical entity, or detach it when the entity is going away entirely, so
+    // the delete below does not trip the FK and roll back the whole merge.
+    if (nodeKind === "entity") {
+      await client.query(
+        canonicalId !== undefined
+          ? "update goal set entity_id = $2 where entity_id = $1"
+          : "update goal set entity_id = null where entity_id = $1",
+        canonicalId !== undefined ? [nodeId, canonicalId] : [nodeId],
+      );
     }
     // whatever still points at the node (un-repointable duplicates, self-loop
     // candidates, or everything when there is no canonical) goes with it.
@@ -1962,6 +1998,36 @@ export class Store {
     }));
   }
 
+  /** Legacy hygiene: provenance rows whose span falls outside their evidence
+   *  text (inserted before the choke-point guard existed). Each is a fact
+   *  whose quote renders blank or truncated; lint surfaces them for a human. */
+  async outOfBoundsSpans(
+    limit = 100,
+  ): Promise<
+    { nodeId: string; nodeKind: string; evidenceId: string; start: number; end: number }[]
+  > {
+    const res = await this.pool.query<{
+      node_id: string;
+      node_kind: string;
+      evidence_id: string;
+      span_start: number;
+      span_end: number;
+    }>(
+      `select p.node_id, p.node_kind, p.evidence_id, p.span_start, p.span_end
+       from provenance p join evidence e on e.id = p.evidence_id
+       where p.span_start < 0 or p.span_end <= p.span_start or p.span_end > length(e.text)
+       limit $1`,
+      [limit],
+    );
+    return res.rows.map((row) => ({
+      nodeId: row.node_id,
+      nodeKind: row.node_kind,
+      evidenceId: row.evidence_id,
+      start: row.span_start,
+      end: row.span_end,
+    }));
+  }
+
   private async insertProvenance(
     client: pg.PoolClient,
     nodeId: string,
@@ -1969,6 +2035,23 @@ export class Store {
     provenance: Provenance,
   ): Promise<void> {
     for (const span of provenance) {
+      // No fact without a real quote: a span must land inside its evidence
+      // text. A span past the end (or empty) would render as a blank or
+      // truncated quote, a fact with no verbatim backing. Every insert path
+      // funnels through here, so the rule is enforced at one choke point.
+      const ev = await client.query<{ len: number }>(
+        "select length(text)::int as len from evidence where id = $1",
+        [span.evidenceId],
+      );
+      const len = ev.rows[0]?.len;
+      if (len === undefined) {
+        throw new Error(`provenance: evidence ${span.evidenceId} not found`);
+      }
+      if (span.start < 0 || span.end <= span.start || span.end > len) {
+        throw new Error(
+          `provenance: span [${span.start}-${span.end}] falls outside evidence ${span.evidenceId} (${len} chars); no fact without a real quote`,
+        );
+      }
       // idempotent: the same (node, evidence, span) link is inserted at most
       // once (unique index in 0002), so a retry or a re-promote never duplicates
       // provenance. evidence itself is untouched; this is the link table.
@@ -2001,6 +2084,38 @@ export class Store {
         await client.query("select pg_advisory_unlock($1, hashtext($2))", [
           CONNECTOR_LOCK_NS,
           name,
+        ]);
+      } finally {
+        client.release();
+      }
+    }
+  }
+
+  /**
+   * Run fn while holding a session advisory lock scoped to one evidence row, so
+   * two distills of the same evidence cannot race the check-then-insert dedup
+   * into duplicate distilled nodes. distill() builds its `seen` set from an
+   * in-memory read of the existing nodes, and each insert mints a fresh UUID, so
+   * nothing at the DB layer stops two concurrent passes (a scheduled `distill
+   * --pending` overlapping a manual distill) from each inserting the full node
+   * set. This lock serializes them: the second pass blocks, then reads the
+   * now-present nodes and skips them. Advisory and cooperative like the connector
+   * lock; a different evidence id takes a different lock, so distinct distills
+   * still run in parallel. Released even if fn throws.
+   */
+  async withDistillLock<T>(evidenceId: string, fn: () => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("select pg_advisory_lock($1, hashtext($2))", [
+        DISTILL_LOCK_NS,
+        evidenceId,
+      ]);
+      return await fn();
+    } finally {
+      try {
+        await client.query("select pg_advisory_unlock($1, hashtext($2))", [
+          DISTILL_LOCK_NS,
+          evidenceId,
         ]);
       } finally {
         client.release();

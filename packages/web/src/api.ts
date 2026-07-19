@@ -328,7 +328,13 @@ export async function answerBatch(
 
 function send(res: ServerResponse, status: number, body: unknown): void {
   const json = JSON.stringify(body);
-  res.writeHead(status, { "content-type": "application/json" });
+  res.writeHead(status, {
+    "content-type": "application/json",
+    // live brain state: never cache, never let a browser sniff it into
+    // something executable.
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+  });
   res.end(json);
 }
 
@@ -480,6 +486,41 @@ async function handle(
     res.end = (() => realEnd()) as typeof res.end;
   }
 
+  // The CSRF gate. A browser attaches Origin to every cross-site request; a
+  // hostile page must not write into a localhost brain through a "simple
+  // request" POST. Same-origin fetches and curl either omit Origin or match
+  // the Host. MARROW_WEB_ALLOW_ORIGIN whitelists one origin for intentional
+  // proxied serving.
+  if (req.method === "POST" && path.startsWith("/api/")) {
+    const origin = req.headers.origin;
+    if (origin !== undefined) {
+      let originHost: string | undefined;
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        originHost = undefined;
+      }
+      const sameOrigin = originHost !== undefined && originHost === req.headers.host;
+      const allowed = process.env.MARROW_WEB_ALLOW_ORIGIN;
+      if (!sameOrigin && origin !== allowed) {
+        throw new ApiError(
+          403,
+          "cross-origin writes are not allowed; this brain only accepts same-origin requests (set MARROW_WEB_ALLOW_ORIGIN to allow one origin explicitly)",
+        );
+      }
+    }
+    // a POST that carries a body must say it is JSON: an HTML form cannot,
+    // which closes the classic no-preflight CSRF vector. bodyless action
+    // POSTs (sync, enable) pass; the origin gate above still covers them.
+    const hasBody =
+      (req.headers["content-length"] !== undefined && req.headers["content-length"] !== "0") ||
+      req.headers["transfer-encoding"] !== undefined;
+    const contentType = req.headers["content-type"] ?? "";
+    if (hasBody && !/^application\/json\b/.test(contentType)) {
+      throw new ApiError(415, "POST bodies must be application/json");
+    }
+  }
+
   if (path === "/api/state" && req.method === "GET") {
     return send(res, 200, await getState(core));
   }
@@ -510,7 +551,7 @@ async function handle(
       ...(kind ? { kind } : {}),
       ...(status ? { status } : {}),
       ...(before ? { before } : {}),
-      ...(limit && Number.isFinite(limit) ? { limit } : {}),
+      ...(limit !== undefined && Number.isInteger(limit) && limit > 0 ? { limit } : {}),
     });
     return send(res, 200, runs);
   }
@@ -589,7 +630,10 @@ async function handle(
     return send(
       res,
       200,
-      await recentEvidence(store, limit && Number.isFinite(limit) ? limit : 30),
+      await recentEvidence(
+        store,
+        limit !== undefined && Number.isInteger(limit) && limit > 0 ? limit : 30,
+      ),
     );
   }
   if (path === "/api/ingest" && req.method === "POST") {
@@ -746,6 +790,15 @@ async function handle(
   }
 
   // Static frontend (prod). The dev server (vite) handles this in development.
+  // HTML carries the defensive headers: same-origin CSP (inline theme script
+  // and vite styles stay allowed), no framing, no sniffing.
+  const HTML_HEADERS = {
+    "content-type": CONTENT_TYPES[".html"] ?? "text/html; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "content-security-policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'",
+  };
   if (options.clientDir) {
     const rel = path === "/" ? "index.html" : path.replace(/^\/+/, "");
     const safe = normalize(rel).replace(/^(\.\.(\/|\\|$))+/, "");
@@ -753,13 +806,20 @@ async function handle(
     try {
       const data = await readFile(file);
       const ext = safe.slice(safe.lastIndexOf("."));
-      res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
+      if (ext === ".html") {
+        res.writeHead(200, HTML_HEADERS);
+      } else {
+        res.writeHead(200, {
+          "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream",
+          "x-content-type-options": "nosniff",
+        });
+      }
       res.end(data);
       return;
     } catch {
       // SPA fallback: serve index.html for client routes.
       const html = await readFile(join(options.clientDir, "index.html"));
-      res.writeHead(200, { "content-type": CONTENT_TYPES[".html"] });
+      res.writeHead(200, HTML_HEADERS);
       res.end(html);
       return;
     }

@@ -128,29 +128,35 @@ export function OverviewView({
         </div>
       </header>
 
-      <section className="stat-grid" aria-label="At a glance">
-        <StatCard onClick={() => navigate("graph")} tone="decided">
-          <Ticking value={summary.decided} className="stat-num" />
-          <span className="stat-label">Decided</span>
-          <span className="stat-foot">Facts a human stands behind</span>
-        </StatCard>
-        <StatCard onClick={() => navigate("questions")} tone="open">
-          <Ticking value={summary.openQuestions} className="stat-num" />
-          <span className="stat-label">Open</span>
-          <span className="stat-foot">Questions to settle</span>
-        </StatCard>
-        <StatCard onClick={() => navigate("graph")}>
-          <Ticking value={summary.entities} className="stat-num" />
-          <span className="stat-label">Entities</span>
-          <span className="stat-foot">Things the room talks about</span>
-        </StatCard>
-        <StatCard onClick={() => navigate("connectors")} tone="accent">
-          <span className="stat-num">
-            {summary.itemsThisWeek === null ? "—" : summary.itemsThisWeek.toLocaleString()}
+      <section className="stat-band" aria-label="At a glance">
+        <button className="stat-hero decided" onClick={() => navigate("graph")}>
+          <Ticking value={summary.decided} className="stat-hero-num" />
+          <span className="stat-hero-label">decided</span>
+          <span className="stat-hero-foot">
+            Facts a human stands behind, the whole point of the room.
           </span>
-          <span className="stat-label">{OVERVIEW_ITEMS_THIS_WEEK_COPY.label}</span>
-          <span className="stat-foot">{OVERVIEW_ITEMS_THIS_WEEK_COPY.foot}</span>
-        </StatCard>
+        </button>
+        <ul className="stat-list">
+          <StatLine
+            tone="open"
+            value={summary.openQuestions}
+            label="open"
+            foot="questions to settle"
+            onClick={() => navigate("questions")}
+          />
+          <StatLine
+            value={summary.entities}
+            label="entities"
+            foot="things the room talks about"
+            onClick={() => navigate("graph")}
+          />
+          <StatLine
+            value={summary.itemsThisWeek}
+            label={OVERVIEW_ITEMS_THIS_WEEK_COPY.label.toLowerCase()}
+            foot={OVERVIEW_ITEMS_THIS_WEEK_COPY.foot.toLowerCase()}
+            onClick={() => navigate("connectors")}
+          />
+        </ul>
       </section>
 
       <div className="overview-cols">
@@ -249,18 +255,30 @@ export function OverviewView({
   );
 }
 
-function StatCard({
-  children,
+function StatLine({
+  value,
+  label,
+  foot,
   onClick,
   tone,
 }: {
-  children: React.ReactNode;
+  value: number | null;
+  label: string;
+  foot: string;
   onClick: () => void;
-  tone?: "decided" | "open" | "accent";
+  tone?: "open";
 }): JSX.Element {
   return (
-    <button className={`stat-card${tone ? ` ${tone}` : ""}`} onClick={onClick}>
-      {children}
-    </button>
+    <li>
+      <button className="stat-line" onClick={onClick}>
+        {value === null ? (
+          <span className={`stat-line-num${tone ? ` ${tone}` : ""}`}>—</span>
+        ) : (
+          <Ticking value={value} className={`stat-line-num${tone ? ` ${tone}` : ""}`} />
+        )}
+        <span className="stat-line-label">{label}</span>
+        <span className="stat-line-foot">{foot}</span>
+      </button>
+    </li>
   );
 }

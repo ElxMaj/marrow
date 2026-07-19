@@ -241,7 +241,15 @@ export class SyncEngine {
       for (const draft of drafts) {
         // a skipped item still advances the watermark, so a boundary item that
         // dedup keeps re-delivering does not pin the cursor in the past forever.
-        if (draft.timestamp && (!watermark || draft.timestamp > watermark)) {
+        // an unparseable source date (new Date("") -> Invalid Date) is truthy but
+        // NaN-valued: treated as valid it would pin the watermark forever (no real
+        // date can exceed NaN) and then crash the unguarded toISOString() below,
+        // wedging the connector on every run. Reject it like a missing timestamp.
+        if (
+          draft.timestamp &&
+          !Number.isNaN(draft.timestamp.getTime()) &&
+          (!watermark || draft.timestamp > watermark)
+        ) {
           watermark = draft.timestamp;
         }
         // evidence is append only: dedup is a skip, never an update.
@@ -260,9 +268,12 @@ export class SyncEngine {
       error = err instanceof Error ? err.message : String(err);
     }
 
-    // prefer the high-water mark; fall back to wall clock only for connectors
-    // that do not report per-item timestamps, preserving their behavior.
-    const cursor = watermark ? watermark.toISOString() : ranAt;
+    // prefer the high-water mark. with no new timestamp this run (an idle run,
+    // or a connector that reports none), keep the previous cursor rather than
+    // jumping to the local wall clock: a wall-clock cursor skips items posted
+    // before the run that only became visible after it. only the very first
+    // run, with no prior cursor, falls back to wall clock.
+    const cursor = watermark ? watermark.toISOString() : (state?.cursor ?? ranAt);
 
     const latencyMs = Date.now() - start;
     const run = await this.deps.store.recordRun({

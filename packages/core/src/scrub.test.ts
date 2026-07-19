@@ -25,12 +25,55 @@ describe("scrubSecrets", () => {
     expect(result.total).toBe(5);
   });
 
+  it("redacts Stripe-style underscore secret keys the sk- rule would miss", () => {
+    // build the fixtures by concatenation so the source file carries no
+    // contiguous key literal for push-protection secret scanners to flag.
+    const body = "AbCdEfGhIjKlMnOpQrStUvWx"; // 24 chars, matches {16,}
+    const skLive = `sk_live_${body}`;
+    const skTest = `sk_test_${body}`;
+    const rkLive = `rk_live_${body}`;
+    const text = `stripe secret: ${skLive}\nstripe test: ${skTest}\nrestricted: ${rkLive}`;
+    const result = scrubSecrets(text);
+    expect(result.text).not.toContain(skLive);
+    expect(result.text).not.toContain(skTest);
+    expect(result.text).not.toContain(rkLive);
+    expect(result.text).not.toContain(body);
+    expect(result.text).toContain("[redacted:provider-key]");
+    expect(result.total).toBe(3);
+  });
+
   it("redacts PEM private key blocks whole", () => {
     const pem = `-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7\nmore lines\n-----END RSA PRIVATE KEY-----`;
     const result = scrubSecrets(`the key was pasted:\n${pem}\nend of paste`);
     expect(result.text).not.toContain("MIIEpAIBAAKCAQEA7");
     expect(result.text).toContain("[redacted:private-key]");
     expect(result.text).toContain("end of paste");
+  });
+
+  it("redacts multiple PEM blocks and keeps the text between them", () => {
+    const block = (n: number) =>
+      `-----BEGIN RSA PRIVATE KEY-----\nBODY${n}0000lines\n-----END RSA PRIVATE KEY-----`;
+    const text = `first:\n${block(1)}\nmiddle prose\n${block(2)}\nlast prose`;
+    const result = scrubSecrets(text);
+    expect(result.text).not.toContain("BODY10000");
+    expect(result.text).not.toContain("BODY20000");
+    expect(result.text).toContain("middle prose");
+    expect(result.text).toContain("last prose");
+    expect(result.findings).toEqual([{ kind: "private-key", count: 2 }]);
+  });
+
+  it("stays linear (not O(n^2)) on a crafted BEGIN-repeat blob with no END", () => {
+    // The old lazy /BEGIN...[\s\S]*?...END/ scanned to end-of-string once per
+    // header looking for an END that never comes, so this ~2MB input took
+    // multiple seconds and stalled the single event loop. With no closing END no
+    // block completes, so the linear scanner leaves the text untouched, fast.
+    const blob = "-----BEGIN A PRIVATE KEY-----\n".repeat(70_000);
+    const started = performance.now();
+    const result = scrubSecrets(blob);
+    const elapsedMs = performance.now() - started;
+    expect(result.text).toBe(blob);
+    expect(result.total).toBe(0);
+    expect(elapsedMs).toBeLessThan(2000); // old code: several seconds
   });
 
   it("redacts credential assignments but keeps the key name", () => {

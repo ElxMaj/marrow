@@ -142,7 +142,7 @@ Run `marrow doctor` (or `pnpm marrow doctor`) any time to check the whole stack 
 
 - Node >= 20.
 - Postgres 16+ with the pgvector extension. `pnpm db:up` starts one in Docker, or point `DATABASE_URL` at any Postgres where `create extension vector` has run.
-- **Embeddings are zero-config**: a small model runs in-process the first time you distill (no endpoint, no key, ~25MB one-time download). To use your own embedding endpoint instead (Ollama, or any OpenAI-compatible), set `MARROW_EMBEDDING_BASE_URL`.
+- **Embeddings are zero-config**: a small model runs in-process, with or without a model key, so search is semantic out of the box (no endpoint, no key, ~25MB one-time download on first use). Set `MARROW_LOCAL_EMBEDDINGS=0` to skip the download and stay lexical-only, or `MARROW_EMBEDDING_BASE_URL` to use your own embedding endpoint (Ollama, or any OpenAI-compatible).
 - For real distillation you need a model key: `MARROW_API_KEY` for Claude, or `MARROW_PROVIDER=openai-compatible` for a local LLM. Reads and ingestion work with no model at all. See [.env.example](./.env.example).
 
 ## Ingest the room

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { READ_ONLY, getCore, getStore, goalViews, readJson, sendJson } from "./_core.js";
+import { READ_ONLY, getCore, getStore, goalViews, readJson, route, sendJson } from "./_core.js";
 
 // /api/goals — the Goals space.
 //   GET  lists goals (decided + open) with status, provenance and the entity
@@ -8,7 +8,7 @@ import { READ_ONLY, getCore, getStore, goalViews, readJson, sendJson } from "./_
 //   POST authors a goal: a HUMAN action, so core lands it decided with a human
 //        confidence and captures the authored text as immutable evidence. refused
 //        in a read-only demo. the web owns no promote logic; this is a passthrough.
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === "GET") {
     const url = new URL(req.url ?? "/", "http://localhost");
     const status = url.searchParams.get("status") ?? undefined;
@@ -49,3 +49,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   sendJson(res, 405, { error: "method not allowed" });
 }
+
+export default route(handler);

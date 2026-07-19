@@ -353,6 +353,16 @@ describe("mcp tools", () => {
     };
     expect(byId.entity?.id).toBe(node.id);
 
+    // no fact without a real quote: a span past the end of its evidence is
+    // refused at the store choke point and surfaces as a clean tool error.
+    await expect(
+      call("propose_node", {
+        kind: "entity",
+        name: "phantom quote",
+        provenance: [{ evidenceId, start: 0, end: 100000 }],
+      }),
+    ).rejects.toThrow(/outside evidence/);
+
     const missing = (await call("get_entity", { idOrName: "missing entity" })) as {
       entity: unknown | null;
     };
