@@ -329,6 +329,22 @@ export interface BrainGraph {
   edges: GraphEdge[];
 }
 
+/** A drift scan's outcome: catches created this run, their event ids, and the
+ *  still-open catches from earlier runs that match the CURRENT diff. The last
+ *  set is what keeps a CI gate red on re-run: dedupe stops duplicate catches,
+ *  it never stops the violation from counting. */
+export interface DriftScanResult {
+  created: Distilled[];
+  events: number[];
+  openMatches: {
+    questionId: string;
+    decisionId: string;
+    path: string;
+    lineStart: number;
+    lineEnd: number;
+  }[];
+}
+
 export interface TaskBrief {
   task: string;
   status: "safe_to_build" | "ask_human_first";
@@ -1465,13 +1481,17 @@ export class Marrow {
       trigger?: string | undefined;
       synthetic?: boolean | undefined;
     } = {},
-  ): Promise<{ created: Distilled[]; events: number[] }> {
+  ): Promise<DriftScanResult> {
     return traced(this.store, { kind: "drift", label: repoPath }, async (report) => {
       const result = await this.runDriftScan(repoPath, options);
       report({
         ...(options.semantic !== false && this.model ? { model: this.model.model } : {}),
-        outputSummary: `${result.created.length} catch${result.created.length === 1 ? "" : "es"}`,
-        metadata: { catches: result.created.length, events: result.events.length },
+        outputSummary: `${result.created.length} catch${result.created.length === 1 ? "" : "es"}, ${result.openMatches.length} still open`,
+        metadata: {
+          catches: result.created.length,
+          events: result.events.length,
+          openMatches: result.openMatches.length,
+        },
       });
       return result;
     });
@@ -1487,20 +1507,21 @@ export class Marrow {
       trigger?: string | undefined;
       synthetic?: boolean | undefined;
     } = {},
-  ): Promise<{ created: Distilled[]; events: number[] }> {
-    if (options.enabled === false) return { created: [], events: [] };
+  ): Promise<DriftScanResult> {
+    if (options.enabled === false) return { created: [], events: [], openMatches: [] };
     const trigger = options.trigger ?? "manual";
     const synthetic = options.synthetic ?? false;
     const useSemantic = options.semantic !== false && this.model !== undefined;
 
     const hunks = options.hunks ?? (await readGitDiff(repoPath, options.scope ?? "unstaged"));
-    if (hunks.length === 0) return { created: [], events: [] };
+    if (hunks.length === 0) return { created: [], events: [], openMatches: [] };
 
     // maintenance watches decided decisions (constraints) AND decided goals
     // (aspirations). either is enough to make a scan worthwhile.
     const decided = await this.store.listDecisions({ status: "decided" });
     const decidedGoals = await this.store.listGoals({ status: "decided" });
-    if (decided.length === 0 && decidedGoals.length === 0) return { created: [], events: [] };
+    if (decided.length === 0 && decidedGoals.length === 0)
+      return { created: [], events: [], openMatches: [] };
 
     const created: Distilled[] = [];
     const events: number[] = [];
@@ -1523,15 +1544,21 @@ export class Marrow {
 
     // load prior catch events (surfaced or dismissed) so we do not recreate the
     // same catch after a human dismisses it, and so multiple hunks for the same
-    // decision are each surfaced once.
-    const priorCatchSignatures = new Set<string>();
+    // decision are each surfaced once. keep the question id per signature: a
+    // dedupe hit on a STILL-OPEN catch is not "no drift", it is the same
+    // unresolved violation seen again, and the gate must stay red for it.
+    const priorCatchSignatures = new Map<string, string | undefined>();
     for (const decision of decided) {
       const decisionEvents = await this.store.listCatchEvents({ decisionId: decision.id });
       for (const event of decisionEvents) {
-        const e = event as { diff_span?: { path?: string; lineStart?: number; lineEnd?: number } };
+        const e = event as {
+          question_id?: string | null;
+          diff_span?: { path?: string; lineStart?: number; lineEnd?: number };
+        };
         if (e.diff_span?.path !== undefined) {
-          priorCatchSignatures.add(
+          priorCatchSignatures.set(
             `${decision.id}:${e.diff_span.path}:${e.diff_span.lineStart}-${e.diff_span.lineEnd}`,
+            e.question_id ?? undefined,
           );
         }
       }
@@ -1545,15 +1572,38 @@ export class Marrow {
       signal: NonNullable<ReturnType<typeof ruleDriftSignal>>;
     }
     const ruleCandidates: Candidate[] = [];
+    const dedupedHits = new Map<
+      string,
+      { decisionId: string; path: string; lineStart: number; lineEnd: number }
+    >();
     for (let hunkIndex = 0; hunkIndex < hunks.length; hunkIndex += 1) {
       const hunk = hunks[hunkIndex];
       if (!hunk) continue;
       for (const decision of decided) {
         const signature = `${decision.id}:${hunkSignature(hunk)}`;
-        if (priorCatchSignatures.has(signature)) continue;
+        if (priorCatchSignatures.has(signature)) {
+          const questionId = priorCatchSignatures.get(signature);
+          if (questionId !== undefined && ruleDriftSignal(hunk.newLines, decision)) {
+            dedupedHits.set(questionId, {
+              decisionId: decision.id,
+              path: hunk.path,
+              lineStart: hunk.lineStart,
+              lineEnd: hunk.lineEnd,
+            });
+          }
+          continue;
+        }
         const signal = ruleDriftSignal(hunk.newLines, decision);
         if (signal) ruleCandidates.push({ decision, hunk, hunkIndex, signal });
       }
+    }
+
+    // deduped signatures whose catch question is STILL OPEN: the same
+    // violation seen again. a re-run must not launder it green.
+    const openMatches: DriftScanResult["openMatches"] = [];
+    for (const [questionId, hit] of dedupedHits) {
+      const question = await this.store.getQuestion(questionId);
+      if (question?.status === "open") openMatches.push({ questionId, ...hit });
     }
 
     // semantic layer: precision filter over rule candidates when a model is
@@ -1682,7 +1732,7 @@ export class Marrow {
       }
     }
 
-    return { created, events };
+    return { created, events, openMatches };
   }
 
   /** Shared guard for every catch resolution path: the question must exist, be

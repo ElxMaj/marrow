@@ -689,15 +689,29 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
         trigger: ci ? "ci" : "cli",
       });
       if (ci) {
+        // file paths come from the prompt's "<path>:<start>-<end>" span. the
+        // path is the first whitespace-free token carrying line numbers, so a
+        // prose prefix ("drift: the code in ...") never leaks into file=.
         const annotations = result.created
           .filter((n): n is import("@marrowhq/shared").Question => n.kind === "question")
           .map((q) => {
-            const match = /^(.*):(\d+)-(\d+)/.exec(q.prompt);
+            const match = /(\S+):(\d+)-(\d+)/.exec(q.prompt);
             const file = match?.[1] ?? "";
             const line = match?.[2] ?? "1";
             return `::error file=${file},line=${line}::${q.prompt.replace(/\n/g, " ")}`;
           });
-        return { driftCi: { annotations, hasDrift: annotations.length > 0 } };
+        // a still-open catch matching the current diff is the same violation
+        // seen again: the gate stays red until a human accepts or dismisses it.
+        const openAnnotations = result.openMatches.map(
+          (m) =>
+            `::error file=${m.path},line=${m.lineStart}::drift still open: ${m.questionId} (resolve with marrow accept ${m.questionId} --text "..." or marrow dismiss ${m.questionId} --reason "...")`,
+        );
+        return {
+          driftCi: {
+            annotations: [...annotations, ...openAnnotations],
+            hasDrift: annotations.length + openAnnotations.length > 0,
+          },
+        };
       }
       return result;
     }
@@ -1357,13 +1371,31 @@ export function formatResult(result: unknown): string {
     return all.length === 0 ? "(Nothing found)" : all.map(formatNode).join("\n");
   }
 
-  // drift: { created, events }.
+  // drift: { created, events, openMatches }.
   if ("created" in r && Array.isArray(r.events)) {
     const created = asNodes(r.created);
     const events = (r.events as unknown[]).length;
-    if (created.length === 0)
+    const open = Array.isArray(r.openMatches)
+      ? (r.openMatches as { questionId: string; path: string }[])
+      : [];
+    // a still-open catch matching this diff must never read as all-clear.
+    const openLines = open.map(
+      (m) =>
+        `  [open catch] ${m.path} still contradicts a decided fact: ${m.questionId}\n    Next: marrow accept ${m.questionId} --text "..." or marrow dismiss ${m.questionId} --reason "..."`,
+    );
+    if (created.length === 0) {
+      if (open.length > 0) {
+        return [
+          `(No new drift; ${open.length} open catch${open.length === 1 ? "" : "es"} still pending.)`,
+          ...openLines,
+        ].join("\n");
+      }
       return events > 0 ? "(No new drift detected; prior catches logged)" : "(No drift detected)";
-    return `${created.map(formatNode).join("\n")}\n${events} catch event${events === 1 ? "" : "s"} recorded.`;
+    }
+    return [
+      `${created.map(formatNode).join("\n")}\n${events} catch event${events === 1 ? "" : "s"} recorded.`,
+      ...openLines,
+    ].join("\n");
   }
 
   // drift --ci: { driftCi: { annotations, hasDrift } }

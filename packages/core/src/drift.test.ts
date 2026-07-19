@@ -99,6 +99,29 @@ describe("drift detection", () => {
     expect(events.some((e) => e.event_type === "catch_surfaced")).toBe(true);
   });
 
+  it("a re-run on the same unresolved diff stays red: the open catch is reported, not laundered", async () => {
+    await seedDecided("magic links only, no passwords");
+    const hunks = [hunk("src/auth.ts", "const passwordHash = hash(password);")];
+    const first = await core.driftScan(".", { hunks, semantic: false, trigger: "test" });
+    expect(first.created.length).toBeGreaterThan(0);
+    const question = first.created.find((n) => n.kind === "question");
+    expect(question).toBeDefined();
+
+    // the identical diff again: dedupe stops a duplicate catch, but the open
+    // violation must still count. this exact re-run used to go green.
+    const second = await core.driftScan(".", { hunks, semantic: false, trigger: "test" });
+    expect(second.created).toHaveLength(0);
+    expect(second.openMatches.length).toBeGreaterThan(0);
+    expect(second.openMatches.map((m) => m.questionId)).toContain(question?.id);
+    expect(second.openMatches[0]?.path).toBe("src/auth.ts");
+
+    // once a human resolves the catch, the same diff goes quiet.
+    if (question) await core.dismissCatch(question.id, "intentional exception");
+    const third = await core.driftScan(".", { hunks, semantic: false, trigger: "test" });
+    expect(third.created).toHaveLength(0);
+    expect(third.openMatches).toHaveLength(0);
+  });
+
   it("can be turned off with one flag", async () => {
     await seedDecided("magic links only, no passwords");
     const result = await core.driftScan(".", {
