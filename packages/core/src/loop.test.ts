@@ -748,6 +748,39 @@ describe("agent decision gate and truth maintenance", () => {
     }
   });
 
+  it("redact destroys one payload, writes the audit row, and refuses when nodes still cite it", async () => {
+    // uncited leak: redaction proceeds, audited, reason never contains the secret.
+    const leak = await store.insertEvidence({
+      text: "the staging wifi password is horse-battery-staple-42",
+      source: "session/leak.md",
+    });
+    const receipt = await core.redact(leak.id, "leaked staging credential");
+    expect((await store.getEvidence(leak.id))?.text).toBe("[redacted: leaked staging credential]");
+    const audit = await store.getEvidence(receipt.auditEvidenceId);
+    expect(audit?.source).toBe(`redactions/${leak.id}`);
+    expect(audit?.text).not.toContain("horse-battery");
+
+    // cited leak: refused with the blast radius named; nothing destroyed.
+    const cited = await store.insertEvidence({
+      text: "another leak cited by a node",
+      source: "session/leak2.md",
+    });
+    const node = await store.insertDecision({
+      title: "Node quoting the leak",
+      rationale: "",
+      constraint: false,
+      status: "open",
+      confidence: modelConf,
+      provenance: [{ evidenceId: cited.id, start: 0, end: 12 }],
+    });
+    await expect(core.redact(cited.id, "leaked")).rejects.toThrow(node.id);
+    expect((await store.getEvidence(cited.id))?.text).toContain("another leak");
+
+    // guards: reason required, double redact refused.
+    await expect(core.redact(leak.id, "again")).rejects.toThrow(/already redacted/);
+    await expect(core.redact(cited.id, " ")).rejects.toThrow(/reason is required/);
+  });
+
   it("maintainTruth surfaces the undistilled evidence backlog with a drain action", async () => {
     // a session-end hook write: evidence appended, never distilled.
     await store.insertEvidence({

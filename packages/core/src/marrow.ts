@@ -2429,6 +2429,46 @@ export class Marrow {
   }
 
   /**
+   * The human-only redaction: destroy the payload bytes of ONE evidence row
+   * (a leaked credential the pre-append scrub missed) while the row, its id,
+   * its source, its date, and every citation survive, and a normal
+   * append-only audit evidence row records that it happened, never the
+   * secret. This is the single, visible exception to append-only evidence.
+   * Without cascade it refuses when distilled nodes cite the row, printing
+   * the blast radius: the human must see what still quotes the secret before
+   * anything is destroyed. CLI-only; there is deliberately no MCP tool.
+   */
+  async redact(
+    evidenceId: string,
+    reason: string,
+  ): Promise<{ evidenceId: string; auditEvidenceId: string }> {
+    if (!reason || reason.trim().length === 0) {
+      throw new Error("redact: a reason is required");
+    }
+    const evidence = await this.store.getEvidence(evidenceId);
+    if (!evidence) throw new Error(`redact: evidence ${evidenceId} not found`);
+    if (evidence.redactedAt !== undefined) {
+      throw new Error(`redact: evidence ${evidenceId} is already redacted`);
+    }
+    const citing = await this.store.getNodesForEvidence(evidenceId);
+    if (citing.length > 0) {
+      const list = citing
+        .map((node) => `${node.id} [${node.status}] ${nodeTitle(node)}`)
+        .join("; ");
+      throw new Error(
+        `redact: ${citing.length} distilled node${citing.length === 1 ? "" : "s"} cite this evidence and would keep quoting it: ${list}. Cascade support arrives with the second redaction PR; until then retract the citing nodes first.`,
+      );
+    }
+    await this.store.redactEvidence(evidenceId, reason);
+    // the audit trail is ordinary append-only evidence, and never the secret.
+    const audit = await this.store.insertEvidence({
+      text: `redacted ${evidenceId}: ${reason}`,
+      source: `redactions/${evidenceId}`,
+    });
+    return { evidenceId, auditEvidenceId: audit.id };
+  }
+
+  /**
    * The human-only correction: retract a false memory so it stops surfacing
    * anywhere retrieval serves facts, while the node, its content, and its
    * provenance stay fully inspectable by id. The reason is stored as

@@ -252,6 +252,7 @@ Add to the room (transcripts in many formats: vtt, srt, json, txt, md):
   answer <questionId> --text "..." [--decide <id>]   The human promote-to-decided step
   retract <nodeId> --reason "..." [--force]   Human-only: a false memory stops surfacing (kept, never erased)
   history <nodeId>            The replacement lineage: what replaced what, when, and why
+  redact <evidenceId> --reason "..."   Human-only, audited: destroy ONE row's payload (a leaked secret)
   goal author "<title>" [--type product|user] [--description "..."] [--entity <id>]
                               Author a decided goal (the human commitment path)
   goal propose "<title>" --type product|user --evidence <id> [--start N --end N]
@@ -657,6 +658,15 @@ export async function runCommand(core: Marrow, argv: string[]): Promise<unknown>
       await core.distill(evidenceId);
       await core.linkAndMerge(evidenceId);
       return { evidenceId, nodes: await core.getNodesForEvidence(evidenceId) };
+    }
+
+    case "redact": {
+      const evidenceId = positional(rest);
+      const reason = flagValue(rest, "--reason");
+      if (!evidenceId || reason === undefined) {
+        throw new Error('Usage: marrow redact <evidenceId> --reason "what leaked and why"');
+      }
+      return core.redact(evidenceId, reason);
     }
 
     case "history": {

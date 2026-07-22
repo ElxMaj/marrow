@@ -84,6 +84,9 @@ export const EvidenceSchema = z.object({
   text: z.string(),
   source: z.string().min(1),
   createdAt: Iso,
+  /** set when this row's payload was destroyed by the human-only redaction
+   *  exception; the text is the fixed tombstone from that moment on. */
+  redactedAt: Iso.optional(),
 });
 export type Evidence = z.infer<typeof EvidenceSchema>;
 

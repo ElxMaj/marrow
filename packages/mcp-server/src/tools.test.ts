@@ -459,10 +459,15 @@ describe("mcp tools", () => {
     expect((await core.getNode(catchQuestion.id))?.status).toBe("open");
   });
 
-  it("there is deliberately no MCP retract tool: agents cannot hide facts", () => {
+  it("there is deliberately no MCP retract or redact tool: agents cannot hide or destroy", () => {
     expect(tools.map((t) => t.name)).not.toContain("retract");
-    // and no tool description even hints at a retract path.
+    expect(tools.map((t) => t.name)).not.toContain("redact");
+    // no tool description hints at a retract path; redact appears only in
+    // append_evidence's honesty note, which names it as CLI-only.
     expect(tools.every((t) => !/retract/i.test(t.description))).toBe(true);
+    const mentions = tools.filter((t) => /redact/i.test(t.description));
+    expect(mentions.map((t) => t.name)).toEqual(["append_evidence"]);
+    expect(mentions[0]?.description).toMatch(/human-only/i);
   });
 
   it("append_evidence distills inline by default: the write is retrievable in-session", async () => {
